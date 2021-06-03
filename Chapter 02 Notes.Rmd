@@ -1,0 +1,132 @@
+---
+title: "Chapter 2 Notes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(fpp3)
+```
+## 2.1 tsibble objects
+Formerly a ```ts()``` object, ```tsibble()``` is the new way to establish a 
+timeseries object 
+
+```
+y <- tsibble(
+  Year = 2015:2019,
+  Observation = c(123, 39, 78, 52, 110),
+  index = Year
+)
+```
+```tsibble``` objects extend tidy data frames (```tibble`` objects) by introducing
+temporal structure.
+
+When observations are more frequent that yearly, a timeclass function must be
+used as the index. Below is a monthly `tibble` df:
+```z
+#> # A tibble: 5 x 2
+#>   Month    Observation
+#>   <chr>          <dbl>
+#> 1 2019 Jan          50
+#> 2 2019 Feb          23
+#> 3 2019 Mar          34
+#> 4 2019 Apr          30
+#> 5 2019 May          25
+```
+
+In order to convert to `tsibble`, convert the `Month` column from `<chr>` to `<mth>`
+using `yearmonth()` and identifying `index` variable with `as_tsibble()`:
+```
+z %>%
+  mutate(Month = yearmonth(Month)) %>%
+  as_tsibble(index = Month)
+```
+
+
+<br></br>
+**Other Time Class Functions**
+
+Feature|Function
+-------|---------
+|Annual  | `start:end`|
+|Quarterly    | `yearquarter()`|
+|Monthly      | `yearmonth()`|
+|Weekly       | `yearweek()`|
+|Daily        | `as_date()`, `ymd()`|
+|Sub-daily    | `as_datetime()`, `ymd_hms()`|
+
+
+<br></br>
+**Working with `tsibble` Objects**
+
+We can use `dplyr` functions on `tsibble` objects.Examples below using the PBS
+tsibble containing sales data on pharmaceutical products in Australia
+```{r}
+PBS
+```
+Using the `filter()` function to call specific value from column:
+```{r}
+PBS %>%
+  filter(ATC2 == 'A10')
+```
+Selecting the specific columns we need with `select()`:
+```{r}
+PBS %>%
+  filter(ATC2 == 'A10') %>%
+  select(Month, Concession, Type, Cost)
+
+```
+`select()` handles columns while `filter()` handles rows
+
+`summarize()` allows you to combine data across keys:
+```{r}
+PBS %>%
+  filter(ATC2 == 'A10') %>%
+  select(Month, Concession, Type, Cost) %>%
+  summarize(TotalC = sum(Cost))
+```
+Creating new variables using `mutate()`
+```{r}
+PBS %>%
+  filter(ATC2 == 'A10') %>%
+  select(Month, Concession, Type, Cost) %>%
+  summarize(TotalC = sum(Cost)) %>%
+  mutate(Cost = TotalC/1e6)
+```
+Saving as a tsibble():
+```{r}
+a10 <- PBS %>%
+  filter(ATC2 == 'A10') %>%
+  select(Month, Concession, Type, Cost) %>%
+  summarize(TotalC = sum(Cost)) %>%
+  mutate(Cost = TotalC/1e6)
+```
+
+
+***
+
+
+## 1.4 Forecasting Data and Methods
+
+  
+***
+
+
+## 1.6 Basic Steps in a Forecasting Task
+
+
+
+***
+
+
+## 1.7 The Statistical Forecasting Perspective
+
+
+
+***
+
+```{r}
+
+```
+

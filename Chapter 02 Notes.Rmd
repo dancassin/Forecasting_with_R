@@ -1,8 +1,6 @@
 ---
 title: "Chapter 2 Notes"
-output:
-  pdf_document: default
-  html_document: default
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -10,6 +8,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(fpp3)
 library(readr)
+library(GGally)
 ```
 ## 2.1 tsibble objects
 Formerly a ```ts()``` object, ```tsibble()``` is the new way to establish a 
@@ -160,7 +159,7 @@ drop at the beginning of each year.
 **Trend**: A long-term increase or decrease in the data.
 
 **Seasonality**: When a pattern occurs in a fixed and known period of time, 
-typically a yearly or less (i.e. hourly, weekly, monthly, quarterly).
+typically a year or less (i.e. hourly, weekly, monthly, quarterly).
 
 **Cycle**: Occurs when the data exhibits a pattern not of fixed frequency usually
 on a scale > 2 years (i.e. market downturns every 7-10 years ) 
@@ -213,6 +212,113 @@ a10 %>%
 * Shows seasonal changes over time
 
 
+#### Example: Australian Holiday Tourism
+
+Using Australian quarterly vacation data to example seasonal subseries plots
+
+```{r}
+holidays <- tourism %>%
+  filter(Purpose == 'Holiday') %>% #total visitor nights on holiday
+  group_by(State) %>% # grouped by state
+  summarize(Trips = sum(Trips)) # total nights summed by state
+
+
+autoplot(holidays, Trips) +
+  labs(y='Overnight Trips (in thousands)',
+       x='',
+       title='Australian Domestic Holidays')
+```
+
+ Above chart shows strong seasonality for most states. Seasonal peaks do not 
+ coincide.
+ 
+ 
+ To see seasonal peaks by time period, use season plot.
+```{r, fig.width = 8, fig.height = 10}
+gg_season(holidays, Trips) +
+  labs(y='Overnight Trips (in thousands)',
+       x='',
+       title='Australian Domestic Holidays') 
+```
+ 
+ From the above graph we can see:
+ * Southern states have strongest tourism in Q1
+ * Northern states have strongest tourism in Q3
+ 
+ 
+ The subseries plot is kind of a combination of the previous two graphs:
+```{r, fig.width = 8, fig.height = 10}
+holidays %>%
+  gg_subseries(Trips) +
+  labs(y='Overnight Trips (in thousands)',
+       x='',
+       title='Australian Domesitic Holidays')
+```
+ 
+ From the above graph we can see:
+ * All tourisim in Western Australia has increased over the years
+ * Tourism has increased in Victoria recently only in Q1 and Q4
+
 ***
 
-## 2.6 
+## 2.6 Scatter Plots
+
+Used for exploring relationships between different time series. Here we look at
+half-hourly electric demand and temperature for Victoria, Australia.
+
+```{r, fig.width = 8, fig.height = 3}
+vic_elec %>%
+  filter(year(Time) == 2014) %>%
+  autoplot(Demand) +
+  labs(y='GW',
+       title = 'Half Hourly Electirc Demand: Victoria')
+```
+```{r, fig.width = 8, fig.height = 3}
+vic_elec %>%
+  filter(year(Time) == 2014) %>%
+  autoplot(Temperature) +
+  labs(
+    y='Degrees Celsius',
+    title = 'Half Hourly Temps: Melbourne, Victoria'
+  )
+```
+
+Let's plot these series against eachother:
+```{r}
+vic_elec %>%
+  filter(year(Time) == 2014) %>%
+  ggplot(aes(x = Temperature, y = Demand)) +
+  geom_point() +
+  labs(x = 'Temperature (degrees Celcius)',
+       y = 'Electricity Demand (GW)')
+```
+
+Clearly, high demand happens when temps are high and when temps are very low.
+
+
+#### Correlation and Scatter Plot Matrices
+
+If unclear what statistical correlation is, Google Pearson Correlation coefficient.
+In situations with several potential predictor variables, a scatter plot matrix
+compares all variables.
+```{r, fig.width = 10, fig.height = 9}
+visitors <- tourism %>%
+  group_by(State) %>%
+  summarise(Trips = sum(Trips))
+
+visitors %>%
+  pivot_wider(values_from = Trips, names_from = State) %>%
+  ggpairs(columns = 2:9, progress = FALSE)
+```
+In the above, mostly positive relationships are revealed between the comparisons.
+Strongest relationships are between New South Wales, Victoria and South Australia,
+which are all southern. Negative relationships between Northern Territory and 
+other regions as peak visitation times are seasonally opposite.
+
+***
+
+## 2.7 Lag Plots
+
+
+
+

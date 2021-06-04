@@ -1,6 +1,6 @@
 ---
 title: "Chapter 1 Notes"
-output: github_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}

@@ -7,6 +7,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 library(fpp3)
+library(readr)
 ```
 ## 2.1 tsibble objects
 Formerly a ```ts()``` object, ```tsibble()``` is the new way to establish a 
@@ -104,29 +105,106 @@ a10 <- PBS %>%
 ```
 
 
+<br></br>
+**Reading CSVs**
+```{r}
+prison <- readr::read_csv("https://OTexts.com/fpp3/extrafiles/prison_population.csv")
+
+# The original CSV has the date variable as individual days and they should be quarters
+
+prison <- prison %>%
+  mutate(Quarter = yearquarter(Date)) %>%
+  select(-Date) %>%
+  as_tsibble(key = c(State, Gender, Legal, Indigenous),
+             index = Quarter)
+
+prison
+```
+
+
 ***
 
 
-## 1.4 Forecasting Data and Methods
+## 2.2 Time Plots
+
+**Example of a time plot**
+```{r}
+autoplot(a10, Cost) +
+  labs(y='$ in millions',
+       x='',
+      title= 'Australian Antidiabetic Drug Sales')
+```
+
+Plot shows:
+
+* clear and increasing trend
+* strong seasonal pattern
+* increase in variance
+
+Reason behind the shape:
+
+* Government subsidizes in such a way that makes it cost-effective for 
+patients to stockpile at the end of the calendar year, which leads to the 
+drop at the beginning of each year.
+
+
 
   
 ***
 
 
-## 1.6 Basic Steps in a Forecasting Task
+## 2.3 Time Series Patterns
 
+**Trend**: A long-term increase or decrease in the data.
+
+**Seasonality**: When a pattern occurs in a fixed and known period of time, 
+typically a yearly or less (i.e. hourly, weekly, monthly, quarterly).
+
+**Cycle**: Occurs when the data exhibits a pattern not of fixed frequency (i.e.
+market upturns and downturns) usually on a scale > 2 years (i.e. every decade ) 
 
 
 ***
 
 
-## 1.7 The Statistical Forecasting Perspective
-
-
-
-***
-
+## 2.4 Seasonal Plots
+A seasonal plot shows the data plotted against each individual "season"
 ```{r}
-
+a10 %>%
+  gg_season(Cost, labels='both') +
+  labs(y = '$ in millions',
+       x='',
+       title = 'Seasonal Plot: Antidiabetic Drug Sales') +
+  expand_limits(x = ymd(c('1972-12-28','1973-12-04')))
 ```
 
+**Multiple Seasonal Periods**
+In a case where data has more than one season pattern, use `period` argument.
+```{r}
+vic_elec %>% gg_season(Demand, period='day') +
+  #theme(legend.position = 'none') + #very unclear without the legend
+  labs(y='MW', title='Electricity Demand: Victoria')
+```
+```{r}
+vic_elec %>% gg_season(Demand, period='week') +
+  labs(y='MW',title='Weekly Electricty Demand: Victoria')
+```
+
+
+***
+
+#2.5 Seasonal Subseries Plot 
+
+Alternative plot where data from each season is collected in a mini time plot
+```{r}
+a10 %>%
+  gg_subseries(Cost)+
+  labs(y = '$ in millions',
+       title = 'Australian Antidiabetic Drug Sales'
+  )
+```
+*What the plot shows*:
+
+* Blue horizontal lines indicate means for each month. 
+* Seasonal pattern can be seen clearly
+* Shows seasonal changes over time

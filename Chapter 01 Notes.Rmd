@@ -1,6 +1,6 @@
 ---
 title: "Chapter 1 Notes"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -59,7 +59,7 @@ is called the **point forecast**.
 
 
 
-> #### Short hand meanings
+#### Short hand meanings
 
 $y_t$: an observation, $y$, at time $_t$
 
@@ -70,11 +70,11 @@ $y_t|\mathcal{I}$ would mean "the random variable $y_t$ given what we know in $\
 The set of values and relative probabilities of this random variable is the 
 **probability distribution**. When forecasting, it is the **forecast distribution**.
 
-$\hat{y}_t$: Termed "y hat". The point forecast of $y_t$
+$\hat{y}_t$: Termed "y hat", and is the point forecast of $y_t$
 
 
 
-> #### Examples of Short hand
+#### Examples of Short hand
 
 $\hat{y}_{t|t-1}$: this would mean the forecast of $y_t$ taking account of all 
 previous observations
@@ -83,8 +83,4 @@ $\hat{y}_{T+h|T}$: the forecast of $y_{T+h}$ taking account of all observations
 up to time $T$ via steps of $h$ size
 
 ***
-
-```{r}
-
-```
 

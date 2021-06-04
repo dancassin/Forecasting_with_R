@@ -1,6 +1,6 @@
 ---
 title: "Chapter 2 Notes"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -160,8 +160,8 @@ drop at the beginning of each year.
 **Seasonality**: When a pattern occurs in a fixed and known period of time, 
 typically a yearly or less (i.e. hourly, weekly, monthly, quarterly).
 
-**Cycle**: Occurs when the data exhibits a pattern not of fixed frequency (i.e.
-market upturns and downturns) usually on a scale > 2 years (i.e. every decade ) 
+**Cycle**: Occurs when the data exhibits a pattern not of fixed frequency usually
+on a scale > 2 years (i.e. market downturns every 7-10 years ) 
 
 
 ***
@@ -193,7 +193,7 @@ vic_elec %>% gg_season(Demand, period='week') +
 
 ***
 
-#2.5 Seasonal Subseries Plot 
+## 2.5 Seasonal Subseries Plot 
 
 Alternative plot where data from each season is collected in a mini time plot
 ```{r}
@@ -203,8 +203,14 @@ a10 %>%
        title = 'Australian Antidiabetic Drug Sales'
   )
 ```
+
 *What the plot shows*:
 
 * Blue horizontal lines indicate means for each month. 
 * Seasonal pattern can be seen clearly
 * Shows seasonal changes over time
+
+
+***
+
+## 2.6 

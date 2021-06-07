@@ -319,6 +319,80 @@ other regions as peak visitation times are seasonally opposite.
 
 ## 2.7 Lag Plots
 
+Plot showing lagged values of the time series. Each graph shows $y_t$ plotted 
+against $y_{t-k}$ for different values of $k$.
+```{r}
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 2000)
+
+recent_production %>%
+  gg_lag(Beer, geom = 'point') +
+  labs(x = 'lag(Beer, k)')
+```
+In this chart we see strong positive correlation at 4 & 8 lags reflecting 
+strong seasonality. Negative relationship in 2 & 6 occurs because peaks in Q4
+are plotted against troughs in Q2.
+
+***
+
+## 2.8 Autocorrelation
+
+While correlation measures the linear relationship between two variables,
+autocorrelation measure the linear relationship between **lagged values** of 
+a time series.
 
 
+Autocorrelation can be computed using the `ACF()` function and then plotted using
+`autoplot()`
+```{r, fig.width = 6, fig.height = 2}
+recent_production %>% 
+  ACF(Beer) %>%
+  autoplot() +
+  labs(title = 'Australian Beer Production')
 
+```
+To interpret this graph:
+* Dash blue line indicates whether correlations are significantly different from 0
+* $r_4$ (as well as $r_8$, $r_12$, and $r_16$) show significance due to the 
+quarterly nature of the data with peaks every quarter.
+* $r_2$ is more negative due to the fact that toughs are two quarters behind peaks
+
+
+*Trend and Seasonality in ACF Plots*
+
+ACF of a trended time series tends to have positive values that slowly decrease
+as the lags decrease because observations close in time would be close in value.
+
+ACF of seasonal data willl have autocorrelations at multiples of the seasonal
+period.
+
+When data is trended and seasonal, there will be a combination.
+```{r, fig.width = 8, fig.height = 2}
+a10 %>%
+  ACF(Cost, lag_max = 48) %>%
+  autoplot() +
+  labs(title='Australian Antidiabetic Drug Sales')
+```
+
+***
+
+## 2.9 White Noise
+
+*White Noise* - a time series that shows no autocorrelation
+
+```{r}
+set.seed(30)
+y <- tsibble(sample = 1:50, wn = rnorm(50), index = sample)
+y %>% autoplot(wn) + labs(title = "White Noise", y='')
+```
+
+
+```{r, fig.height=2, fig.width=6}
+y %>%
+  ACF(wn) %>%
+  autoplot() + labs(title = "White noise")
+```
+
+* We would expect 95% of ACF spikes to be inside of the blue lines
+* If one or more large spikes or substantially more than 5% of spikes above 
+blue bounds, then series is likely not white noise

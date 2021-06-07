@@ -1,0 +1,95 @@
+---
+title: "Chapter 02 Exercises"
+output: html_document
+---
+
+```{r, echo=TRUE, results='hide'}
+library(fpp3)
+library(USgas)
+```
+
+## 2.10 Exercises
+
+1. Use the help function to explore what the series gafa_stock, PBS, vic_elec and pelt 
+    a. use `autoplot() to plot some of the series in these data sets
+    b. what is the interval of each time series?
+        i. gafa_stock: daily (trading days)
+        ii. PBS: monthly
+        iii. vic_elec: half-hourly
+        iv. pelt: yearly
+    
+
+```{r}
+autoplot(vic_elec, Demand)
+```
+
+```{r}
+laxatives <- PBS %>%
+  filter(ATC2 == 'A06') %>% # Laxatives 
+  select(Month, Concession, Type, Cost) %>%
+  summarize(Total_Cost = sum(Cost))
+  
+autoplot(laxatives, Total_Cost)
+```
+
+
+2. Use `filter()` to find what days corresponded to the peak closing price for each of the four stocks in `gafa_stock`.
+
+```{r}
+peak_closers <- gafa_stock %>%
+  group_by(Symbol) %>%
+  filter(Close == max(Close))
+  
+peak_closers
+```
+
+
+3. Download the file `tute1.csv` from the book website, open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled `Sales`, `AdBudget` and `GDP`. Sales contains the quarterly sales for a small company over the period 1981-2005. AdBudget is the advertising budget and GDP is the gross domestic product. All series have been adjusted for inflation.
+    a. Read Data into R
+    b. Convert the data into a timeseries
+    c. Construct a time series plot of each of the three series
+```{r}
+tute1 <- readr::read_csv('tute1.csv')
+
+my_timeseries <- tute1 %>%
+  mutate(Quarter = yearmonth(Quarter)) %>%
+  as_tsibble(index = Quarter)
+
+my_timeseries
+```
+
+```{r}
+my_timeseries %>%
+  pivot_longer(-Quarter) %>%
+  #autoplot
+  ggplot(aes(x = Quarter, y = value, color = name)) +
+  geom_line() +
+  facet_grid(name ~ ., scales = 'free_y')
+```
+
+
+4. The `USgas` package contains data on the demand for natural gas in the US.
+    a. Install the `USgas` package.
+    b. Create a `tsibble()` from `us_total` with year as the index and state as the key.
+    c. Plot the annual natural gas consumption by state for the New England area (comprising the states of Maine, Vermont, New Hampshire, Massachusetts, Connecticut and Rhode Island).
+    
+```{r}
+gas_timeseries <- us_total %>%
+  as_tsibble(key = state,
+             index = year)
+
+new_england <- c('Maine', 'Vermont', 'New Hampshire', 'Massachusetts', 'Connecticut', 'Rhode Island')
+
+ne_gas <- gas_timeseries %>%
+  filter(state %in% new_england)
+
+autoplot(ne_gas, y) +
+  labs(y = 'Million Cubic Feet',
+       x = '',
+       title = 'Natural Gas Consumption in New England States')
+```
+
+5. Download tourism.xlsx from the book website and read it into R using readxl::read_excel().
+    a. Create a tsibble which is identical to the tourism tsibble from the tsibble package.
+    b. Find what combination of Region and Purpose had the maximum number of overnight trips on average.
+    c. Create a new tsibble which combines the Purposes and Regions, and just has total trips by State.

@@ -3,7 +3,7 @@ title: "Chapter 02 Exercises"
 output: html_document
 ---
 
-```{r, echo=TRUE, results='hide'}
+```{r include=FALSE, results='hide'}
 library(fpp3)
 library(USgas)
 ```
@@ -32,6 +32,8 @@ laxatives <- PBS %>%
 autoplot(laxatives, Total_Cost)
 ```
 
+***
+
 
 2. Use `filter()` to find what days corresponded to the peak closing price for each of the four stocks in `gafa_stock`.
 
@@ -43,6 +45,7 @@ peak_closers <- gafa_stock %>%
 peak_closers
 ```
 
+***
 
 3. Download the file `tute1.csv` from the book website, open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled `Sales`, `AdBudget` and `GDP`. Sales contains the quarterly sales for a small company over the period 1981-2005. AdBudget is the advertising budget and GDP is the gross domestic product. All series have been adjusted for inflation.
     a. Read Data into R
@@ -67,6 +70,7 @@ my_timeseries %>%
   facet_grid(name ~ ., scales = 'free_y')
 ```
 
+***
 
 4. The `USgas` package contains data on the demand for natural gas in the US.
     a. Install the `USgas` package.
@@ -89,7 +93,255 @@ autoplot(ne_gas, y) +
        title = 'Natural Gas Consumption in New England States')
 ```
 
+***
+
+
 5. Download tourism.xlsx from the book website and read it into R using readxl::read_excel().
     a. Create a tsibble which is identical to the tourism tsibble from the tsibble package.
     b. Find what combination of Region and Purpose had the maximum number of overnight trips on average.
     c. Create a new tsibble which combines the Purposes and Regions, and just has total trips by State.
+    
+```{r}
+tourism #original tourism tsibble
+```
+```{r}
+# creating the tsibble to match tourism
+
+fpp_tourism <- readxl::read_excel('tourism.xlsx')
+
+fpp_tourism <- fpp_tourism %>%
+  mutate(Quarter = yearquarter(Quarter)) %>%
+  as_tsibble(key = c(Region, State, Purpose), 
+             index=Quarter)
+
+fpp_tourism
+
+```
+```{r}
+# finding the Region/Purpose combo with highest number trips on avg
+
+fpp_tourism %>%
+  as_tibble %>% # quick conversion to tibble seems to be necessary
+  group_by(Region, Purpose) %>%
+  summarize(avg_trips = mean(Trips)) %>%
+  arrange(desc(avg_trips))
+```
+
+Sydney Visiting had the highest number of trips on avg 
+
+
+```{r}
+# creating a new tsibble combining Purpose/Region, with only total trips by state
+fpp_tourism %>%
+  unite(region_purpose, Region,Purpose) %>%
+  group_by(State) %>%
+  summarize(Total_Trips = sum(Trips))
+
+```
+
+***
+
+
+6. Create time plots of the following four time series: 
+`Bricks` from `aus_production`, `Lynx` from `pelt`, 
+`Close` from `gafa_stock`, Demand from `vic_elec.`
+    a. Use ? (or help()) to find out about the data in each series.
+    b. For the last plot, modify the axis labels and title.
+
+```{r}
+autoplot(aus_production,Bricks)
+```
+```{r}
+autoplot(pelt, Lynx)
+```
+```{r}
+autoplot(gafa_stock, Close)
+```
+```{r}
+  autoplot(vic_elec, Demand) +
+  labs(y = 'modifying this label',
+       x = 'modifying that label',
+       title = 'modifying title'
+       )
+```
+
+***
+
+
+7. The `aus_arrivals` data set comprises quarterly international arrivals to Australia from Japan, New Zealand, UK and the US.
+    a. Use autoplot(), gg_season() and gg_subseries() to compare the differences between the arrivals from these four countries.
+    b. Can you identify any unusual observations?
+    
+```{r}
+autoplot(aus_arrivals, Arrivals)
+gg_season(aus_arrivals, Arrivals)
+gg_subseries(aus_arrivals, Arrivals)
+```
+
+ Notable observations:
+ 
+ * Tourism from Japan peaked in the late 90's
+ * Q2 and Q3 have many fewer UK tourists than Q1 and Q4
+ * Majority of tourists from Japan and NZ are in Q3
+
+***
+
+
+8. Monthly Australian retail data is provided in `aus_retail`. Select one of the time series as follows (but choose your own seed value):
+```{r}
+set.seed(222)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`,1))
+
+myseries
+```
+
+```{r}
+autoplot(myseries, Turnover)
+gg_season(myseries, Turnover)
+gg_subseries(myseries, Turnover)
+gg_lag(myseries, Turnover) +
+  geom_point()
+
+ACF(myseries, Turnover) %>% autoplot()
+```
+
+* Definite seasonality with turnover steadily increasing from Jan to Dec
+* Definite trend with turnover increasing from late 90s to present day
+* I do not see anything cyclic in the data
+* Lot of autocorrelation with the lag and ACF plot
+
+***
+
+
+9. Use the following graphics functions: `autoplot()`, `gg_season()`, 
+`gg_subseries()`, `gg_lag()`, `ACF()` and explore features from the following 
+time series: “Total Private” Employed from `us_employment`, Bricks from 
+`aus_production`, Hare from `pelt`, “H02” Cost from `PBS`, and `us_gasoline`.
+    a. Can you spot any seasonality, cyclicity and trend?
+    b. What do you learn about the series?
+    c. What can you say about the seasonal patterns?
+    d. Can you identify any unusual years?
+    
+```{r}
+us_employment %>%
+  filter(Title == 'Total Private') %>%
+  autoplot(.vars = Employed)
+```
+
+Just from the autoplot function, this series shows:
+* Clear upward trend
+* Yearly seasonality
+* A cyclic dip roughly every decade
+
+```{r}
+
+autoplot(aus_production, Bricks)
+
+```
+
+There is definitely seasonality as well as negative trend since the highs in the 80s.
+
+There also appears to be a cyclic dip every 8-10 years
+
+
+```{r}
+autoplot(pelt,Hare)
+```
+
+There does not appear to be a trend, and the data is yearly, so no seasonality.
+Cyclic pattern every 5-10 years apparent
+
+```{r}
+h02_cost <- PBS %>%
+  filter(ATC2 == 'H02') %>%
+  summarize(total_cost = sum(Cost))
+  
+
+autoplot(h02_cost)
+```
+
+***
+
+
+10. The following time plots and ACF plots correspond to four different time series. 
+Your task is to match each time plot in the first row with one of the ACF plots 
+in the second row.
+
+My best guesses: 1:C, 2:A, 3:D, 4:A
+
+***
+
+
+11. The `aus_livestock` data contains the monthly total number of pigs slaughtered 
+in Victoria, Australia, from Jul 1972 to Dec 2018. Use `filter()` to extract pig 
+slaughters in Victoria between 1990 and 1995. Use `autoplot()` and `ACF()` for this 
+data. How do they differ from white noise? If a longer period of data is used, 
+what difference does it make to the ACF?
+
+```{r}
+aus_livestock_9095 <- aus_livestock %>%
+  filter(Month >= yearmonth('1990 Jan'), 
+         Month <= yearmonth('1995 Dec'),
+         Animal == 'Pigs') %>%
+  summarize(Count = sum(Count))
+
+aus_livestock_9095
+```
+
+```{r}
+autoplot(aus_livestock_9095, Count)
+autoplot(ACF(aus_livestock_9095, Count))
+```
+
+Definite seasonality and trend. ACF shows autocorrelation as well. This would
+make it different from white noise.
+
+```{r}
+aus_livestock_pigs <- aus_livestock %>%
+  filter(Animal == 'Pigs') %>%
+  summarize(Count = sum(Count))
+
+autoplot(aus_livestock_pigs, Count)
+autoplot(ACF(aus_livestock_pigs, Count))
+```
+
+The longer time series has a steeper trend making the ACF decrease slightly as the 
+lags increase and there's a slight scalloped shape due to the seasonality
+
+***
+
+
+12. Use the following code to compute the daily changes in Google closing stock prices.
+    a. Why was it necessary to re-index the tsibble?
+    b. Plot these differences and their ACF.
+    c. Do the changes in the stock prices look like white noise?
+
+```{r}
+dgoog <- gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) >= 2018) %>%
+  mutate(trading_day = row_number()) %>%
+  update_tsibble(index = trading_day, regular = TRUE) %>%
+  mutate(diff = difference(Close))
+
+autoplot(dgoog, diff)
+autoplot(ACF(dgoog, diff))
+```
+
+```{r}
+# plotting without updating the index of the tsibble
+# both charts look exactly the same except for the x-axis labels
+dgoog_no_reindex <- gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) >= 2018) %>%
+  mutate(diff = difference(Close))
+
+autoplot(dgoog_no_reindex, diff)
+autoplot(ACF(dgoog_no_reindex, diff))
+```
+
+
+ * Re-indexing the time series doesn't seem to be entirely necessary, but the reason
+for doing it is because trading days are not consistent (as weekends and holidays
+make irregular gaps the data).
+
+* Yes, the changes in the stock price (and most stock prices) are white noise

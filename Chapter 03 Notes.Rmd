@@ -1,0 +1,324 @@
+---
+title: "Chapter 3: Timer Series Decomposition"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(fpp3)
+```
+
+> _Decomposition definition - A time series is of composed of 3 components: trend, seasonality, and the remainder. Decomposition breaks a time series down into its 3 component parts for further study._ 
+
+
+## 3.1 Transformations and Adjustments
+
+__4 Types__
+
+1. Calendar Adjustments
+    a. Some variation in seasonal data may be due to calendar effects (i.e. 
+    some months have fewer days than others and potentially lower sales)
+    b. a potential solution to the above would be to compute avg sales per
+    day in each month.
+
+2. Population Adjustments
+    a. Data affected by population changes should likely be adjusted to give per-capita data.
+    b. Problem: studying amt of hospital beds in a certain region over time. Consider
+    number of beds per 1000 ppl to adjust for population changes in the region.
+    
+    __Example:__
+    A common transformation of GDP is GDP per-capita
+```{r}
+global_economy %>%
+  filter(Country == 'Australia') %>%
+  autoplot(GDP/Population) +
+  labs(title= 'GDP per capita', y='$US', x='')
+```
+    
+3. Inflation Adjustments
+
+The value of money changes over time, and data associated with currency value should
+be adjusted for the inflation of that currency. (i.e. historical house price data
+should be in context of the most recent time period in the data, or in today's dollars).
+
+To make such adjustments, a price index is used.
+
+__Example:__
+Looking at aggregate annual "newspaper and book" retail turnover from `aus_retail`
+and adjusting the data for inflation using Consumer Price Index (CPI) from 
+`global_economy` allow us to see the changes over time.
+```{r}
+print_retail <- aus_retail %>%
+  filter(Industry == "Newspaper and book retailing") %>%
+  group_by(Industry) %>%
+  index_by(Year = year(Month)) %>%
+  summarize(Turnover = sum(Turnover))
+
+aus_economy <- global_economy %>%
+  filter(Code == 'AUS')
+
+print_retail %>%
+  left_join(aus_economy, by = "Year")%>%
+  mutate(Adjusted_Turnover = Turnover / CPI * 100) %>%
+  pivot_longer(c(Turnover, Adjusted_Turnover),
+               values_to = 'Turnover') %>%
+  mutate(name = factor(name,
+                       levels = c("Turnover", "Adjusted_Turnover"))) %>%
+  ggplot(aes(x=Year, y=Turnover)) +
+  geom_line() +
+  facet_grid(name ~ ., scales = 'free_y')+
+  labs(title = "Turnover: Australian Print Media Industry",
+       y = '$AU',
+       x='')
+
+```
+
+Above we can see that Australia's print industry has been in decline for much
+longer than the original time series would suggest.
+
+4. Mathematical Transformations
+
+Helpful when a time series has variations that increase or decrease with the level of the series.
+
+  * log transformations
+  * power transformations
+  * Box Cox transformations - a combination of the above two methods which
+  depends on the parameter $\lambda$
+      * A good value of $\lambda$ is one which makes the size of the seasonal
+      variation about the same across the entire series
+      * The `guerrero` feature can be used to choose a value of lambda for you.
+      
+```{r}
+autoplot(aus_production, Gas)+
+  labs(y='',
+       title='Gas Production with No Tranform')
+
+lambda <- aus_production %>%
+  features(Gas, features = guerrero) %>%
+  pull(lambda_guerrero)
+aus_production %>%
+  autoplot(box_cox(Gas, lambda)) +
+  labs(y = "",
+       title = latex2exp::TeX(paste0(
+         "Transformed gas production with $\\lambda$ = ",
+         round(lambda,2))))
+```
+
+Above we can see the variance of seasonal ups and downs has been transformed
+to a consistent variation.
+
+***
+
+## 3.2 Time Series Components
+
+__Two Types of Decomposition:__
+
+1. __Additive__
+
+  $$y_t= S_t + T_t + R_t$$
+  
+  Where $y_t$ is the data, $S_t$ is the seasonal component, $T_t$ is the trend, and
+  $R_t$ is the remainder
+
+  * Most appropriate if the magnitude of the seasonal fluctuations or varation
+  of the trend cycle does not vary with the level of the time series.
+
+2. __Mutliplicative__
+
+  $$y_t = S_t * T_t * R_t$$
+
+  * Most appropriate when the variation in the seasonal pattern appears to be 
+    proportional to the level of the time series (i.e. very common with economic data)
+  
+  * An alternative to using a multiplicative series is to transform the data
+    (like via Box-Cox in 3.1) until varation is steady over time, then use additive
+    decomposition.
+
+  $\log y_t = \log S_t + \log T_t + \log R_t$ is equivalent to the multiplicative equation
+
+
+__Example:__
+```{r}
+us_retail_employment <- us_employment %>%
+  filter(year(Month) >= 1990, Title == 'Retail Trade') %>%
+  select(-Series_ID)
+
+dcmp <- us_retail_employment %>%
+  model(stl = STL(Employed))
+
+autoplot(components(dcmp))
+```
+
+Trend, Seasonality and the Remainder (White noise) are shown in the bottom three
+panels. The gray boxes on the left of each series show the relative scale of each
+one of the components as each box is the same size. The large size of the box for 
+the remainder component shows that its variation is actually the smallest of the
+three.
+
+
+#### __Seasonally Adjusted Data__
+
+_definition_: the resulting data from when the seasonal component is removed 
+from the original time series
+
+Situations where seasonality is not of primary interest:
+
+  * Monthly employment data are usually seasonally adjusted in order to highlight
+variation of the underlying state of the economy rather than the seasonal variation.
+  * An increase in unemployment do to people leaving school seeking work is seasonal 
+  variation while an increase in unemployment due to recession is not.
+
+__Example__
+
+Below shows the seasonal data subtracted from the original series
+```{r}
+components(dcmp) %>%
+  as_tsibble() %>%
+  autoplot(Employed, color = 'gray') +
+  geom_line(aes(y=season_adjust), color = '#0072B2') +
+  labs(y='Persons (thousands)',
+       x='',
+       title='Total Employment in US Retail')
+```
+
+***
+
+## 3.3 Moving Averages
+
+Moving averages are the foundation of estimating the trend portion of decomposition
+using the following equation:
+
+$$\hat{T_t} = \frac{1}{m}\sum_{j=-k}^{k}y_t+j$$
+
+where $m = 2k+1$. The estimate of the trend-cycle at time $t$ is obtained by averaging 
+values of the time series within $k$ periods of $t$. The average eliminates
+some of the randomness in the data. This is termed "$m$-MA", a moving average (MA)
+of order $m$.
+
+__Example__
+```{r}
+global_economy %>%
+  filter(Country == 'Australia') %>%
+  autoplot(Exports) +
+  labs(y='% of GDP',
+       x='',
+       title='Total Australian Exports')
+```
+
+To compute the moving average we would do the following:
+
+```{r}
+aus_exports <- global_economy %>%
+  filter(Country == 'Australia') %>%
+  mutate(
+    `5-MA` = slider::slide_dbl(Exports, mean, .before=2, .after=2, .complete=TRUE)
+  )
+```
+
+Then we plot the original and the MA
+
+```{r}
+aus_exports %>%
+  autoplot(Exports) +
+  geom_line(aes(y = `5-MA`), colour = "#D55E00") +
+  labs(y = "% of GDP",
+       x='',
+       title = "Total Australian exports") +
+  guides(colour = guide_legend(title = "series"))
+```
+
+(Personal note here: coming form Python, it is unclear to me why the moving average
+is calculated based on observations before and after the the current observation.
+In Python and in finance, rolling averages are typically calculated only from 
+preceding observations. This can obviously be adjusted in the `.before` and `.after` 
+arguments above, but it is unclear why a centered MA is being taught.)
+
+Also note, you can take moving averages of moving averages:
+```{r}
+beer <- aus_production %>%
+  filter(year(Quarter) >= 1992) %>%
+  select(Quarter, Beer)
+beer_ma <- beer %>%
+  mutate(
+    `4-MA` = slider::slide_dbl(Beer, mean,
+                .before = 1, .after = 2, .complete = TRUE),
+    `2x4-MA` = slider::slide_dbl(`4-MA`, mean,
+                .before = 1, .after = 0, .complete = TRUE)
+  )
+
+beer_ma
+
+```
+
+__Weighted Moving Averages__
+
+Combinations of moving averages (like the 2x4 above) result in weighted moving 
+averages.
+
+A major advantage of the weighted moving average is they yield a smoother estimate,
+also, if the MA is not centered, the later observations would have greater weight
+and thus more influence on forecasts.
+
+***
+
+## 3.4 Classical Decomposition
+
+The last paragraph says "While classical decomposition is still widely used,
+it is not recommended as there are now several much better methods." So I will
+move on.
+
+***
+
+## 3.5 Decomp Methods Used by Stats Agencies
+
+__2 Most Popular Methods__
+
+1. X-11
+    a. Originated with US Census Bureau
+    b. Based on classical decomp but contains extra features:
+        i. trend-cycle estimates for end points
+        ii. seasonal component allowed to vary over time
+        iii. handles trading day variation and holidays
+        iv. Methods for both additive and multiplicative decomp
+        v. robust to outliers
+```{r}
+x11_dcmp <- us_retail_employment %>%
+  model(x11 = X_13ARIMA_SEATS(Employed ~ x11())) %>%
+  components()
+
+autoplot(x11_dcmp) +
+  labs(x='', title='Decomposition of Total US Retail Employment Using X-11')
+```
+
+Above, the X-11 trend cycle captures the sudden fall due to the 2008 financial
+crisis better than STL or classical decomp.It can also be useful to employ seasonal
+sub-series plots of the seasonal component to help visualize the variation in the 
+seasonal component over time. Here there are only small changes over time:
+```{r}
+x11_dcmp %>%
+  gg_subseries(seasonal)
+```
+
+
+2. SEATS
+    a. Stands for Seasonal Extraction ARIMA Time Series (Ch 9 covers ARIMA models)
+    b. Developed by Bank of Spain
+    c. too complicated to explain apparently
+```{r}
+seats_dcmp <- us_retail_employment %>%
+  model(seats = X_13ARIMA_SEATS(Employed ~ seats())) %>%
+  components()
+
+autoplot(seats_dcmp) +
+  labs(title = 'Decomposition of Total US Retail Employment Using SEATS')
+```
+
+Result is quite similar to X-11.
+
+`X-13ARIMA_SEATS()` function calls the `seasonal` package which has many options
+for handling variations.
+
+***
+
+
+## 3.6 STL Decomposition
+

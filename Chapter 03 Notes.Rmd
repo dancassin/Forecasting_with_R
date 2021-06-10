@@ -12,21 +12,22 @@ library(fpp3)
 
 ## 3.1 Transformations and Adjustments
 
-__4 Types__
+#### 4 Types
 
-1. Calendar Adjustments
+1. __Calendar Adjustments__
     a. Some variation in seasonal data may be due to calendar effects (i.e. 
     some months have fewer days than others and potentially lower sales)
     b. a potential solution to the above would be to compute avg sales per
     day in each month.
 
-2. Population Adjustments
+2. __Population Adjustments__
     a. Data affected by population changes should likely be adjusted to give per-capita data.
     b. Problem: studying amt of hospital beds in a certain region over time. Consider
     number of beds per 1000 ppl to adjust for population changes in the region.
     
-    __Example:__
-    A common transformation of GDP is GDP per-capita
+__Example:__
+
+A common transformation of GDP is GDP per-capita
 ```{r}
 global_economy %>%
   filter(Country == 'Australia') %>%
@@ -34,7 +35,7 @@ global_economy %>%
   labs(title= 'GDP per capita', y='$US', x='')
 ```
     
-3. Inflation Adjustments
+3. __Inflation Adjustments__
 
 The value of money changes over time, and data associated with currency value should
 be adjusted for the inflation of that currency. (i.e. historical house price data
@@ -75,7 +76,7 @@ print_retail %>%
 Above we can see that Australia's print industry has been in decline for much
 longer than the original time series would suggest.
 
-4. Mathematical Transformations
+4. __Mathematical Transformations__
 
 Helpful when a time series has variations that increase or decrease with the level of the series.
 
@@ -116,20 +117,20 @@ __Two Types of Decomposition:__
 
   $$y_t= S_t + T_t + R_t$$
   
-  Where $y_t$ is the data, $S_t$ is the seasonal component, $T_t$ is the trend, and
+  A. Where $y_t$ is the data, $S_t$ is the seasonal component, $T_t$ is the trend, and
   $R_t$ is the remainder
 
-  * Most appropriate if the magnitude of the seasonal fluctuations or varation
+  B. Most appropriate if the magnitude of the seasonal fluctuations or varation
   of the trend cycle does not vary with the level of the time series.
 
 2. __Mutliplicative__
 
   $$y_t = S_t * T_t * R_t$$
 
-  * Most appropriate when the variation in the seasonal pattern appears to be 
+  A. Most appropriate when the variation in the seasonal pattern appears to be 
     proportional to the level of the time series (i.e. very common with economic data)
   
-  * An alternative to using a multiplicative series is to transform the data
+  B. An alternative to using a multiplicative series is to transform the data
     (like via Box-Cox in 3.1) until varation is steady over time, then use additive
     decomposition.
 
@@ -322,3 +323,35 @@ for handling variations.
 
 ## 3.6 STL Decomposition
 
+1. Stands for "Seasonal and Trend decomposition using Loess"
+2. Has advantages over SEATS and X-11:
+    a. handles any type of seasonality not just quarterly and yearly
+    b. seasonal component may change over time, and rate of change controlled 
+    by user
+    c. smoothness of trend-cycle can be controlled by user
+    d. robust to outliers
+3. Has disadvantages:
+    a. does not handle trading day or calendar variation automatically
+    b. can only be used for additive decomposition
+        i. if multiplicative decomp is needed, take log of the data and then
+        back-transform components
+        ii. any decomps between multiplicative and additive, use Box-Cox
+        
+__Example__
+```{r}
+us_retail_employment %>%
+  model(STL(Employed ~ trend(window = 7) +
+              season(window='periodic'),
+            robust = TRUE)) %>%
+  components() %>%
+  autoplot()
+``` 
+
+The two main parameters for `STL()` are trend-cycle window `trend()` and seasonal
+window `seasona()`. Both should be odd numbers.
+
+`STL()` by default provides automated values  of seasonal window of 13 and a trend
+window of 7. This usually gives a good balance, but in the above case the trend
+underfits the data and signal from the 2008 financial crisis shows in the remainder.
+(Change the values above to verify.) Selecting the shorter window as above improves
+the fit.

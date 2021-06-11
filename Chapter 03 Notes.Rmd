@@ -117,22 +117,24 @@ __Two Types of Decomposition:__
 
   $$y_t= S_t + T_t + R_t$$
   
-  A. Where $y_t$ is the data, $S_t$ is the seasonal component, $T_t$ is the trend, and
+  
+  Where $y_t$ is the data, $S_t$ is the seasonal component, $T_t$ is the trend, and
   $R_t$ is the remainder
 
-  B. Most appropriate if the magnitude of the seasonal fluctuations or varation
+  Most appropriate if the magnitude of the seasonal fluctuations or varation
   of the trend cycle does not vary with the level of the time series.
 
 2. __Mutliplicative__
 
   $$y_t = S_t * T_t * R_t$$
 
-  A. Most appropriate when the variation in the seasonal pattern appears to be 
-    proportional to the level of the time series (i.e. very common with economic data)
+
+Most appropriate when the variation in the seasonal pattern appears to be 
+proportional to the level of the time series (i.e. very common with economic data)
   
-  B. An alternative to using a multiplicative series is to transform the data
-    (like via Box-Cox in 3.1) until varation is steady over time, then use additive
-    decomposition.
+An alternative to using a multiplicative series is to transform the data
+(like via Box-Cox in 3.1) until varation is steady over time, then use additive
+decomposition.
 
   $\log y_t = \log S_t + \log T_t + \log R_t$ is equivalent to the multiplicative equation
 

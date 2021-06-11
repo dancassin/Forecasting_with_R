@@ -12,3 +12,4 @@ https://otexts.com/fpp3
 * [Chapter 2 - Notes](https://dancassin.github.io/Forecasting_with_R/Chapter-02-Notes.html)
 * [Chapter 2 - Exercises](https://dancassin.github.io/Forecasting_with_R/Chapter-02-Notes.html)
 * [Chapter 3 - Notes](https://dancassin.github.io/Forecasting_with_R/Chapter-03-Notes.html)
+* [Chapter 3 - Notes](https://dancassin.github.io/Forecasting_with_R/Chapter-03-Exercises.html)

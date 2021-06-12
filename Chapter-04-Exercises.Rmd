@@ -1,0 +1,135 @@
+---
+title: "Chapter 04 Notes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp3)
+```
+
+## 4.1 Simple Stats
+
+How to calculate the __mean__:
+```{r}
+tourism %>%
+  features(Trips, list(mean = mean)) %>%
+  arrange(mean)
+```
+
+How to calculate __quantiles__:
+```{r}
+tourism %>% features(Trips, quantile)
+```
+
+For this the min is labeled 0% and max is labeled 100%. Weird.
+
+***
+
+## 4.2 ACF Features
+
+  * Sum of the first ten squared autocorrelation coefficients is use as a 
+  summary for how much autocorrelation there is in a series
+  * You can also use autocorrelation on differenced data and seasonally 
+  differenced data (more in future chapters)
+  
+  `feat_acf()` computes some of the autocorrelations above
+```{r}
+tourism %>% features(Trips, feat_acf)
+```
+
+## 4.3 STL Features
+
+* For strongly trended data, seasonally adjusted should have much more variation 
+than the remainder. For data with little to no trend, variances should be about the same.
+* Calculate trend strength as follows:
+
+$$F_T = max\left(0,1 - \frac{Var(R_t)}{Var(T_t + R_t)} \right)$$
+
+* calculate seasonal strength as follows:
+
+$$F_S = max\left(0,1 - \frac{Var(S_t)}{Var(T_t + R_t)} \right)$$
+* A series with strong trend or strong seasonality would be close to 1 where a series with no 
+seasonality or trend would be close to 0.
+
+```{r}
+tourism %>%
+  features(Trips, feat_stl)
+```
+
+To identify which series are heavily trended and which are heavily seasonal:
+
+```{r}
+tourism %>%
+  features(Trips, feat_stl) %>%
+  ggplot(aes(x = trend_strength,
+             y = seasonal_strength_year,
+             col = Purpose)) +
+  geom_point() +
+  facet_wrap(vars(State))
+```
+
+Here we can see holiday travel is, of course, most seasonal while strongest trends
+are in Victoria and W Australia
+
+***
+
+## 4.4 Other Features
+
+Just a bullet point list of features of `feasts`
+***
+
+## 4.5 Exploring the previous list of bullets
+
+All features of the feasts package can be computed like this:
+```{r}
+tourism_features <- tourism %>%
+  features(Trips, feature_set(pkgs = 'feasts'))
+
+tourism_features
+```
+
+```{r, fig.width=12, fig.height=12}
+library(glue)
+
+tourism_features %>%
+  select_at(vars(contains('season'), Purpose)) %>%
+  mutate(
+    seasonal_peak_year = seasonal_peak_year +
+      4*(seasonal_peak_year==0),
+    seasonal_trough_year = seasonal_trough_year +
+      4*(seasonal_trough_year==0),
+    seasonal_peak_year = glue('Q{seasonal_peak_year}'),
+    seasonal_trough_year = glue('Q{seasonal_trough_year}')
+  ) %>%
+  GGally::ggpairs(mapping = aes(colour = Purpose), progress=FALSE)
+```
+
+Notable observations:
+  * The 3 numerical measures related to seasonality are all positively correlated
+  * The bottom left panel and top right panel both show that the most strongly 
+  seasonal series is Holiday
+  * Bar plots in the bottom row of `seasonal_peak_year` and `seasonal_trough_year`
+  columns show that seasonal peaks in Business travel occur most often in Q3 and
+  least often in Q1
+  
+
+__PCA__
+This is where they barely introduce the subject of PCA. Better to learn the 
+details from somewhere else.
+
+```{r}
+library(broom)
+
+pca <- tourism_features %>%
+  select(-State, -Region, -Purpose) %>%
+  prcomp(scale = TRUE) %>%
+  augment(tourism_features)
+
+pca %>%
+  ggplot(aes(x = .fittedPC1, y=.fittedPC2, col=Purpose)) +
+  geom_point() +
+  theme(aspect.ratio = 1)
+```
+ YOURE ON 4.5 RIGHT AFTER PCA. EXPLAIN THE ABOVE CHART AND CONTINUE.
+ 

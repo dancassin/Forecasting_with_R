@@ -6,6 +6,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(fpp3)
+library(glue)
 ```
 
 ## 4.1 Simple Stats
@@ -38,17 +39,21 @@ For this the min is labeled 0% and max is labeled 100%. Weird.
 tourism %>% features(Trips, feat_acf)
 ```
 
+***
+
+
 ## 4.3 STL Features
 
-* For strongly trended data, seasonally adjusted should have much more variation 
+  * For strongly trended data, seasonally adjusted should have much more variation 
 than the remainder. For data with little to no trend, variances should be about the same.
-* Calculate trend strength as follows:
+  * Calculate trend strength as follows:
 
 $$F_T = max\left(0,1 - \frac{Var(R_t)}{Var(T_t + R_t)} \right)$$
 
 * calculate seasonal strength as follows:
 
 $$F_S = max\left(0,1 - \frac{Var(S_t)}{Var(T_t + R_t)} \right)$$
+
 * A series with strong trend or strong seasonality would be close to 1 where a series with no 
 seasonality or trend would be close to 0.
 
@@ -77,7 +82,9 @@ are in Victoria and W Australia
 ## 4.4 Other Features
 
 Just a bullet point list of features of `feasts`
+
 ***
+
 
 ## 4.5 Exploring the previous list of bullets
 
@@ -90,7 +97,6 @@ tourism_features
 ```
 
 ```{r, fig.width=12, fig.height=12}
-library(glue)
 
 tourism_features %>%
   select_at(vars(contains('season'), Purpose)) %>%
@@ -106,6 +112,7 @@ tourism_features %>%
 ```
 
 Notable observations:
+
   * The 3 numerical measures related to seasonality are all positively correlated
   * The bottom left panel and top right panel both show that the most strongly 
   seasonal series is Holiday
@@ -131,5 +138,41 @@ pca %>%
   geom_point() +
   theme(aspect.ratio = 1)
 ```
- YOURE ON 4.5 RIGHT AFTER PCA. EXPLAIN THE ABOVE CHART AND CONTINUE.
- 
+
+The above graph shows
+
+  * The holiday series behaves differently from the others
+    + The second principle component is distinguishing between holiday and other
+  * There are also 4 anomaly points > 10 on the x-axis
+
+__Inspecting the anomalies__:
+```{r}
+outliers <- pca %>%
+  filter(.fittedPC1 > 10) %>%
+  select(Region, State, Purpose, .fittedPC1, .fittedPC2)
+
+outliers
+  
+```
+
+```{r}
+outliers %>%
+  left_join(tourism, by = c('State', 'Region', 'Purpose')) %>%
+  mutate(
+    Series = glue("{State}", "{Region}", "{Purpose}", .sep = "\n\n") 
+  ) %>%
+  ggplot(aes(x = Quarter, y = Trips)) +
+  geom_line() +
+  facet_grid(Series ~ ., scales = "free") +
+  labs(title = "Time Series of PCA Outliers")
+```
+
+Spculation as to why these are outliers:
+
+  * NSW South Coast is highly seasonal but shows no trend whereas most holiday 
+destinations show a trend over time
+  * While Melbourne has a trend as a holiday destination, it has almost no seasonality
+  * North West Corner of Western Australia shows an increase in business tourism
+over the past couple years but no apparent seasonality
+  * The SW corner of Western Australia is unusual as it shows an increase in 
+holiday tourism in just the past couple of years and a high level of seasonality

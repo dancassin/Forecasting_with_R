@@ -37,3 +37,58 @@ gdppc %>%
 
 #### __Define a Model (Specify)__
 
+* This is likely the most important step as the majority of the book is written
+on it, but no real information is given except for the `fable` library.
+
+__fable__
+
+* Most models in `fable` are specified using model functions with the follwing syntax:
+`(y ~  x)`
+  + where `y` is the response variable and `x` is the model structure. Example:
+  `TSLM(GDP_per_capita ~ trend())`
+  + In this case, the model `TSLM()` (Time Series Linear Model), the response 
+  variable is `GDP_per_capita`, and it is being modelled using `trend()`. 
+* The special functions like `trend()` vary between models, check the docs under
+"Specials" section for each model
+* Left side of formula also supports transformations
+
+#### __Train the Model (Estimate)__
+
+* Next we train the model on the data
+* One or more models specifications can be estimated in the `model()` function
+
+__Example__
+```{r}
+fit <- gdppc %>%
+  model(trend_model = TSLM(GDP_per_capita ~ trend()))
+```
+```{r}
+fit
+```
+
+`trend_model` column contains info about the fitted model for each country. This
+is expanded upon later.
+
+#### __Check Model Performance (Evaluate)__
+
+Once fit, a model must be evaluated on the data.
+
+#### __Produce Forecasts (Forecast)__
+
+Using `forecast()` you can specify the forecast interval using the `h` argument 
+(which stands for horizon). You can use integers or language such as "2 years".
+
+```{r}
+fit %>% 
+  forecast(h= "3 years") %>%
+  filter(Country == "Sweden") %>%
+  autoplot(gdppc) +
+  labs(y = '$US', title = 'GDP Per Capita for Sweden')
+```
+
+***
+
+5.2
+
+
+

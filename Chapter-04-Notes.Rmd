@@ -126,6 +126,12 @@ This is where they barely introduce the subject of PCA. Better to learn the
 details from somewhere else.
 
 ```{r}
+pca
+
+```
+
+
+```{r}
 library(broom)
 
 pca <- tourism_features %>%

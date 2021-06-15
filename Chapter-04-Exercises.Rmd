@@ -1,0 +1,130 @@
+---
+title: "Chapter 04 Exercises"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp3)
+library(glue)
+library(GGally)
+library(broom)
+```
+
+## 4.6 Exercises
+
+1. Write a function to compute the mean and standard deviation of a time series, and apply it to the PBS data. Plot the series with the highest mean, and the series with the lowest standard deviation.
+
+```{r}
+PBS %>%
+  as_tibble()%>%
+  group_by(ATC1_desc) %>%
+  summarize(Avg_Cost = mean(Cost), 
+            Std_Cost = sd(Cost)) %>%
+  arrange(desc(Avg_Cost))
+```
+
+* Series with the highest mean: Cardiovascular System
+* Series with the lowest standard deviation: Antiparasitic products, insecticides and repellents
+
+
+```{r}
+
+PBS %>%
+  group_by(ATC1_desc) %>%
+  filter(ATC1_desc == 'Cardiovascular system') %>%
+  summarize(Total_Cost = sum(Cost)) %>%
+  autoplot(Total_Cost) +
+  labs(title = "Cardiovascular System Cost")
+
+
+PBS %>%
+  group_by(ATC1_desc) %>%
+  filter(ATC1_desc == 'Antiparasitic products, insecticides and repellents') %>%
+  summarize(Total_Cost = sum(Cost)) %>%
+  autoplot(Total_Cost) +
+  labs(title = "Antiparasitic products, insecticides and repellents Cost")
+  
+```
+
+2. Use GGally::ggpairs() to look at the relationships between the STL-based features for the holiday series in the tourism data. Change seasonal_peak_year and seasonal_trough_year to factors, as shown in Figure 4.3. Which is the peak quarter for holidays in each state?
+```{r}
+holiday_series <- tourism %>%
+  filter(Purpose == 'Holiday')
+
+holiday_series_features <- holiday_series %>%
+  features(Trips, feature_set(pkgs = 'feasts'))
+
+holiday_series_features %>%
+  select(seasonal_peak_year, seasonal_trough_year, State) %>%
+  mutate(
+    seasonal_peak_year = seasonal_peak_year +
+      4*(seasonal_peak_year == 0),
+    seasonal_trough_year = seasonal_trough_year +
+      4*(seasonal_trough_year == 0),
+    seasonal_peak_year = glue('Q{seasonal_peak_year}'),
+    seasonal_trough_year =glue('Q{seasonal_trough_year}'),
+  ) %>%
+  ggpairs(mapping = aes(color = State)) +
+  theme(axis.text.x.bottom = element_text(angle=45, hjust=1))
+
+```
+
+ACT, NSW, South Australia, Tasmania, Victoria, Western Australia peak in Q1
+Nothern Territory and Queensland peak in Q3
+
+***
+
+3. Use a feature-based approach to look for outlying series in the PBS data. What is unusual about the series you identify as “outliers.”
+```{r}
+PBS  
+```
+
+```{r}
+pbs_features <- PBS %>%
+  features(Scripts, feature_set(pkgs = 'feasts'))
+```
+
+```{r}
+
+pbs_features <- pbs_features %>%
+  drop_na()
+
+pca <- pbs_features %>%
+  select(-Concession, -Type, -ATC1, -ATC2) %>%
+  prcomp(scale = TRUE) %>%
+  augment(pbs_features)
+
+pca %>%
+  ggplot(aes(x = .fittedPC1, y = .fittedPC2, col = ATC1)) +
+  geom_point() +
+  theme(aspect.ratio = 1)
+```
+
+We can see there are outliers here in the bottom right corner.
+
+
+```{r}
+outliers <- pca %>%
+  filter(.fittedPC2 < -10) %>%
+  select(Concession, Type, ATC1)
+
+outliers %>% 
+  left_join(PBS, by = c("Concession", "Type","ATC1")) %>%
+  mutate(
+    Series = glue("{Concession}","{Type}","{ATC1}", .sep = '\n\n')
+  ) %>%
+  ggplot(aes(x = Month, y=Cost)) +
+  geom_line() +
+  facet_grid(Series ~ ., scales = 'free') +
+  labs(title = "PCA Outliers for PBS")
+
+```
+
+I have tried the cost and the total scripts variables and I am still unsure as
+to why these are outliers. Possible reasons:
+
+* J: high seasonality and increasing variance but always falling back to 0 on the dips
+* C: some seasonality and upward trend
+* S: large volume increase towards the end of the series
+

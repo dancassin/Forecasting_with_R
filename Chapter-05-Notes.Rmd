@@ -5,6 +5,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(fpp3)
 ```
 
 ## 5.1 A Tidy Forecasting Workflow
@@ -88,7 +90,272 @@ fit %>%
 
 ***
 
-5.2
+## 5.2 Simple Forecasting Methods
+
+For this chapter we will use Australian brick production using the `filter_index()`
+method for selecting a subsection of a time series:
+```{r}
+bricks <- aus_production %>%
+  filter_index("1970 Q1" ~ "2004 Q4")
+```
+
+#### __Average Method__
+
+The forecast is equal to the mean of the historical data
+
+```{r}
+bricks_fit <- bricks %>% model(MEAN(Bricks))
+
+bricks_fc <- bricks_fit %>%
+  forecast(h=20)
+
+bricks_fc %>%
+  autoplot(bricks)
+```
+
+#### __Naive Method__
+
+For this method, we set all forecasts to be the value of the last observation.
+Works well for many economic and financial time series.
+
+```{r}
+bricks_fit <- bricks %>% model(NAIVE(Bricks))
+
+bricks_fc <- bricks_fit %>%
+  forecast(h=20)
+
+bricks_fc %>%
+  autoplot(bricks)
+```
+
+#### __Seasonal Naive Method__
+
+* Useful for highly seasonal data
+* Set each forecast point to be equal to the last observed value from the same 
+season of the previous year
+
+```{r}
+bricks_fit <- bricks %>% model(SNAIVE(Bricks))
+
+bricks_fc <- bricks_fit %>%
+  forecast(h=20)
+
+bricks_fc %>%
+  autoplot(bricks)
+```
+
+#### __Drift Method__
+
+* Variation on Naive method
+* Allows forecasts to increase/decrease over time
+* Drift: amount of change over time
+* Equivalent to draing a line between first and last observation and exrapolating
+into the future
+
+```{r}
+bricks_fit <- bricks %>% model(RW(Bricks ~ drift()))
+
+bricks_fc <- bricks_fit %>%
+  forecast(h=20)
+
+bricks_fc %>%
+  autoplot(bricks)
+```
+
+__Summary__
+In most cases, there will be better forecasting methods available, but these
+are good to use for benchmarks. If a different method doesn't perform better
+than these simple methods, they should be abandoned.
+
+***
 
 
+## 5.3 Fitted Values and Residuals
+
+#### __Fitted Values__
+
+* Definition: all previous observations in a time series that we're using to forecast
+* Typically denoted as $\hat{y}$
+
+#### __Residuals__
+
+* Definition: what's lefter over after fitting a model. 
+* Innovation residuals: looking at the residuals on a transformed scale if a 
+transformation has been used in the model
+* Fitted values and residuals can be obtained by using `augment()`
+
+__Example__
+```{r}
+augment(bricks_fit)
+```
+
+Three new columns have been added to the data. .resid and .innov are the same
+as there was no transformation used in model.
+
+If patterns are observable in the innovation residuals, then the model could be 
+improved.
+
+***
+
+
+## 5.4 Residual Diagnostics
+
+A good forecast will yield innovation residuals with these properties:
+
+1. Residuals are uncorrelated. 
+    a. If correlation exists, then there is information in the residuals that
+  should be used to compute the forecast.
+2. Residuals must have a mean of zero.
+    a. If the mean is other than zero, the forecast is biased.
+3. Innovation residuals are homoscedastic, meaning they have a constant variance.
+4. Innovation residuals are normally distributed.
+ 
+Numbers 1 and 2 are essential while numbers 3 and 4 are useful but not necessary.
+Fixing issues with number 1 is hard and is not addressed until Ch 10. Fixing issues
+with number 2 is easy: for mean $m$, subtract $m$ from all forecasts to remove the bias.
+
+__Example__
+
+For stock market prices and indexes, the best forecasting method is often the Naive
+method.
+```{r}
+# Re-index based on trading days
+google_stock <- gafa_stock %>%
+  filter(Symbol == "GOOG", year(Date) >= 2015) %>%
+  mutate(day = row_number()) %>%
+  update_tsibble(index = day, regular = TRUE)
+
+# Filtering to 2015 only
+google_2015 <- google_stock %>% 
+  filter(year(Date) == 2015)
+
+autoplot(google_2015, Close) +
+  labs(y= '$US',
+       title = 'Google Daily Closing Stock Prices in 2015')
+  
+```
+
+To get the residuals from the above series:
+```{r}
+aug <- google_2015 %>%
+  model(NAIVE(Close)) %>%
+  augment() 
+
+autoplot(aug, .innov) +
+  labs(y = '$US',
+       title = 'Residuals from the Naive Method')
+```
+
+```{r}
+aug %>%
+  ggplot(aes(x = .innov)) +
+  geom_histogram() +
+  labs(title = 'Histogram of Residuals')
+```
+
+```{r}
+aug %>%
+  ACF(.innov) %>%
+  autoplot() +
+  labs(title = "Residuals from the Naive Method")
+``` 
+
+The above graphs show the Naive method produces a forecast that accounts for all available information. 
+
+* Mean of residuals is near zero
+* Residuals exhibit homoskedasticity 
+* Histogram suggests the residuals may not be normal (would need a statistical
+check to verify)
+* Forecasts from this method would likely be quite good, but prediction intervals
+that are computed assuming a normal distribution may be innaccurate.
+
+A shortcut to the above three graphs is `gg_tsresiduals()`
+```{r}
+google_2015 %>%
+  model(NAIVE(Close)) %>%
+  gg_tsresiduals()
+```
+
+__Portmanteau Tests for Autocorrelation__
+
+More formal test for autocorrelation by considering a whole set of $r_k$ values 
+as a group, recalling $r_k$ is the autocorrelation for lag $k$.
+
+When viewing an ACF plot, it is essentially multiple hypothesis tests, of which
+any one could provide a false positive, and in all likelihood, one may do so due
+to the sheer number. This would lead to the incorrect assumption that residuals
+have remaining autocorrelation.
+
+In order to overcome this, we use portmanteau tests (a French word describing
+a suitcase or coat rack carrying several items of clothing.)
+
+2 portmanteau tests recommended:
+
+1. Box-Pierce Test
+2. Ljung-Box Test
+    a. This is a more accurate test than the Box-Pierce
+    
+```{r}
+aug %>% features(.innov, ljung_box, lag=10, dof=0)
+```
+
+Notes on the above:
+
+* For non-seasonal data, lag value of 10 is recommended. 
+* For seasonal data, a lag of double the seasonal period is recommended. 
+* `dof` stands for "degrees of freedom" and is based on the number of parameters 
+used, of which the naive method uses none.
+* The p-value here is > 0.05, which is not significant, and this is not 
+distinguishable from white noise
+
+Alternative approach would be the drift method
+```{r}
+fit <- google_2015 %>% model(RW(Close ~ drift()))
+tidy(fit)
+```
+
+```{r}
+augment(fit) %>% features(.innov, ljung_box, lag=10, dof=1)
+```
+
+Using the Ljung-Box test with 1 degree of freedom for the estimated parameter.
+Same with the Naive method, the Drift method is also indistinguishable from white
+noise.
+
+***
+
+## 5.5 Distributional Forecasts and Prediction Intervals
+
+## __Forecast Distributions__
+
+Due to the inherent uncertainty of the future, we must account for that uncertainty
+in our forecasts using a probability distribution.
+
+## __Prediction Intervals__
+
+Prediction intervals is a probability range within which we expect $y_t$ to lie.
+Usually this is an 80% or 95% confidence interval, but you can use another 
+multiplier via the below formula and chart where $c$ is the multiplier and $\hat{\sigma}_h$
+is an estimate of the standard deviation of the $h$-step forecast distribution.
+
+$$\hat{y}_{T+h} \pm c\hat{\sigma}_h$$
+
+::: l-body-outset
+|Pct Confidence Interval |	Multiplier ($c$)|
+|-----------|-----------|
+|50 |	0.67|
+|55 |	0.76|
+|60 |	0.84|
+|65 |	0.93|
+|70 |	1.04|
+|75 |	1.15|
+|80 |	1.28|
+|85 |	1.44|
+|90 |	1.64|
+|95 |	1.96|
+|96 | 2.05|
+|97 |	2.17|
+|98 |	2.33|
+|99 |	2.58|
+:::
 

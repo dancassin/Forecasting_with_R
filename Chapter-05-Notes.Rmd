@@ -276,7 +276,7 @@ google_2015 %>%
   gg_tsresiduals()
 ```
 
-__Portmanteau Tests for Autocorrelation__
+#### __Portmanteau Tests for Autocorrelation__
 
 More formal test for autocorrelation by considering a whole set of $r_k$ values 
 as a group, recalling $r_k$ is the autocorrelation for lag $k$.
@@ -326,12 +326,12 @@ noise.
 
 ## 5.5 Distributional Forecasts and Prediction Intervals
 
-## __Forecast Distributions__
+#### __Forecast Distributions__
 
 Due to the inherent uncertainty of the future, we must account for that uncertainty
 in our forecasts using a probability distribution.
 
-## __Prediction Intervals__
+#### __Prediction Intervals__
 
 Prediction intervals is a probability range within which we expect $y_t$ to lie.
 Usually this is an 80% or 95% confidence interval, but you can use another 
@@ -359,3 +359,144 @@ $$\hat{y}_{T+h} \pm c\hat{\sigma}_h$$
 |99 |	2.58|
 :::
 
+#### __One-step Prediction Intervals__
+
+When forecasting one step ahead, the standard deviation of the forecast distribution
+can be estimated using the standard deviation of the residuals.
+
+__Example__
+For `google_2015` stock price data, the last value observed is 758.88. So for a Naive
+forecast, the forecasted value is 758.88. The standard deviation of the residuals 
+is 11.19. A 95% prediction interval (1.96 critical value) for the next value is 
+$$758.88 \pm 1.96(11.19) = [736.9, 780.8]$$
+If a different prediction interval is needed, use the above conversion chart.
+
+#### __Multi-step Prediction Intervals__
+
+The further into the future we forecast, the more inherent uncertainty, and the 
+wider the prediction interval. So $\sigma_h$ increases with $h$.
+
+#### __Benchmark Methods__
+
+When producing multi-step forecasts for the four benchmark methods, it is possible 
+to mathematically derive the forecast standard deviation and thus the prediction 
+intervals, but prediction intervals can easily be computed for you using the 
+`fable` package.
+
+__Example__
+```{r}
+google_2015 %>%
+  model(NAIVE(Close)) %>%
+  forecast(h=10) %>%
+  hilo()
+```
+
+the `hilo()` function converts the forecast distributions into 80% and 95% 
+confidence intervals by default. Other options possible via the `level` argument.
+
+Prediction intervals shown as shaded regions when plotted
+```{r}
+google_2015 %>%
+  model(NAIVE(Close)) %>%
+  forecast(h=10) %>%
+  autoplot(google_2015) +
+  labs(title="Google Daily Closing Stock Price", y='$US')
+```
+
+#### __Prediction Intervals from Bootstrapped Residuals__
+
+When a normal distribution of residuals is an unreasonable assumption, an alternative
+is to us bootstrapping which only assumes residuals are uncorrelated and have 
+constant variance. 
+
+Assuming future errors will be similar to past errors, we can sample from the 
+collection of errors already observed (residuals) and use that sample to simulate
+the next observation in the time series and repeat the process. Doing this multiple
+times will simulate an entire set of future values for the time series. 
+
+Repeating this process will give us many possible futures which we can view using
+the `generate()` function
+```{r}
+fit <- google_2015 %>%
+  model(NAIVE(Close))
+sim <- fit %>% generate(h = 30, times = 5, bootstrap = TRUE)
+
+sim
+```
+
+The `.rep` variable provides the key for each of the 5 futures created with the
+`times` argument. To view each predicted future:
+```{r}
+google_2015 %>%
+  ggplot(aes(x = day)) +
+  geom_line(aes(y = Close)) +
+  geom_line(aes(y = .sim, colour = as.factor(.rep)),
+            data = sim) +
+  labs(title="Google Daily Closing Stock Price with Predictions",
+       y="$US") +
+  guides(col=FALSE)
+```
+
+Prediction intervals are obtained by calculating percentiles of the future
+samples paths for each forecast horizon using the `forecast()` function. 
+The number of samples can be controlled by the `times` argument. 
+```{r}
+fc <- fit %>% forecast(h = 30, bootstrap=TRUE, times=100)
+fc
+```
+```{r}
+autoplot(fc, google_2015) +
+  labs(title="Google daily closing stock price", y="$US" )
+```
+
+***
+
+## 5.6 Forecasting Using Transformations
+
+#### Prediction Intervals with Transformations
+
+Essentially the `fable` package handles back transformations internally, but
+the process is:
+
+* Transform data
+* Make prediction
+* Back-transform data to original scale
+
+This approach preserves the probability coverage, but it will no longer be symmetric
+around the point forecast.
+
+#### Bias Adjustments
+
+One issue with using mathematical transformations such as the Box-Cox, is that 
+the back-transformed point forecast will not be the man of the forecast, but will
+usually be the median. The mean is preferable, but median is acceptable.
+
+This fails in a situation where you want to add up sales forecasts from various
+regions to form a forecast for the whole country. Medians do not add up, but means do.
+
+The difference between the simple back-transformed forecast and the mean is called
+the __bias__. When we use the mean rather than the median, we say the point forecasts 
+have been __bias adjusted__. 
+
+__Example__
+```{r}
+prices %>%
+  filter(!is.na(eggs)) %>%
+  model(RW(log(eggs) ~ drift())) %>%
+  forecast(h = 50) %>%
+  autoplot(prices %>% filter(!is.na(eggs)),
+    level = 80, point_forecast = lst(mean, median)
+  ) +
+  labs(title = "Annual egg prices",
+       y = "$US (in cents adjusted for inflation) ")
+```
+
+Notice how the skewed forecast distribution pulls up the forecast distribution's
+mean. This is a result of the added term from the bias adjustment.
+
+You can obtain the point forecast prior to bias adjustment by using the `median()`
+function on the distribution column.
+
+***
+
+## 5.7 Forecasting wiht Decomposition

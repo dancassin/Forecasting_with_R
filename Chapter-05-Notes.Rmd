@@ -501,7 +501,7 @@ function on the distribution column.
 
 ***
 
-## 5.7 Forecasting wiht Decomposition
+## 5.7 Forecasting with Decomposition
 
 This chapter uses decomposition from Ch 3 in producing forecasts.
 
@@ -619,7 +619,7 @@ Two most commonly used scale dependent measures:
 2. RMSE - Root Mean Squared Error: $\sqrt{mean(e^2_t)}$
 
 
-#### __Percentage Measures
+#### __Percentage Measures__
 
 Percentage measures have the advantage of being unit-free, so can be compared 
 between data sets.The most common is MAPE.
@@ -805,6 +805,7 @@ google_2015 %>%
  smallest RMSE computed using time series cross-validation
  
  __Example__
+ 
  Below code evaluates the forecasting performance of 1 to 8-step-ahead drift
  forecasts. Forecast error increases as the forecast horizon increases.
  

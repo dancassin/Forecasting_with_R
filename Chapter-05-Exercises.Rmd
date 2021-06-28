@@ -1,0 +1,56 @@
+---
+title: "Chapter 5 Exercises"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 5.1 Exercises
+
+1. Produce forecasts for the following series using whichever of NAIVE(y), 
+SNAIVE(y) or RW(y ~ drift()) is more appropriate in each case:
+
+  * Australian Population (global_economy)
+```{r}
+aus_pop <- global_economy %>%
+  filter(Country == 'Australia') %>%
+  select(Population)
+
+autoplot(aus_pop) # based on the graph there is no apparent seasonality but an obvious trend
+
+aus_pop %>%
+  model(RW(Population ~ drift())) %>%
+  forecast(h=1) %>%
+  autoplot(aus_pop)
+
+```
+
+  * Bricks (aus_production)
+```{r}
+aus_bricks <- aus_production %>%
+  filter_index("1970 Q1" ~ "2004 Q4")
+
+autoplot(aus_bricks, Bricks) #obvious seasonality here
+
+brick_fit <- aus_bricks %>%
+  model(SNAIVE(Bricks)) 
+
+brick_fc <- brick_fit %>%
+  forecast(h=4) # 1 year
+
+brick_fc %>% autoplot(aus_bricks)
+```
+  
+  * NSW Lambs (aus_livestock)
+```{r}
+nsw_lambs <- aus_livestock %>%
+  filter(Animal == 'Lambs', State == 'New South Wales', )
+
+autoplot(nsw_lambs, Count)
+```
+  
+  *  Household wealth (hh_budget).
+  * Australian takeaway food turnover (aus_retail).

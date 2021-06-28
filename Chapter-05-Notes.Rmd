@@ -4,9 +4,11 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+
 library(knitr)
 library(fpp3)
+
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## 5.1 A Tidy Forecasting Workflow
@@ -500,3 +502,328 @@ function on the distribution column.
 ***
 
 ## 5.7 Forecasting wiht Decomposition
+
+This chapter uses decomposition from Ch 3 in producing forecasts.
+
+__Example__
+```{r}
+us_retail_employment <- us_employment %>%
+  filter(year(Month) >= 1990, Title == "Retail Trade")
+
+dcmp <- us_retail_employment %>%
+  model(STL(Employed ~ trend(window = 7), robust = TRUE)) %>%
+  components() %>%
+  select(-.model)
+
+dcmp %>%
+  model(NAIVE(season_adjust)) %>%
+  forecast() %>%
+  autoplot(dcmp) +
+  labs(y="Number of People",
+       title = "US Retail Employment")
+```
+
+The above shows the Naive forecast for seasonally adjusted data. This is then
+"reseasonalized" by adding in the Seasonal Naive forecasts of the seasonal 
+componenet:
+
+```{r}
+fit_dcmp <- us_retail_employment %>%
+  model(stlf = decomposition_model(
+    STL(Employed ~ trend(window=7), robust = TRUE),
+    NAIVE(season_adjust)
+  ))
+fit_dcmp %>%
+  forecast %>%
+  autoplot(us_retail_employment) +
+  labs(y = "Number of People",
+       title = "Monthly US Retail Employment")
+```
+
+In the above code: 
+
+* `decomposition_model()` allows you to compute forecasts via
+any additive decomp whil using other model functions to forecast each of the 
+decomp's components.
+    * Seasonal components will automatically be forecast using `SNAIVE()`
+    * The function also will reseasonalize automatically
+
+```{r}
+fit_dcmp %>% gg_tsresiduals()
+```
+
+The ACF of the residuals show significant autocorrelation because the Naive method 
+does not capture the changing trend in the seasonally adjusted series. Better
+methods in future chapters.
+
+***
+
+## 5.8 Evaluating Point Forecast Accuracy
+
+#### __Train / Test Sets__
+
+It is essential to evaluate forecast accuracy using genuine forecasts, and the 
+accuracy of forecasts can only be determined by testing the model on unseen data.
+
+Therefore, it is common practice to divide the available data into two portions
+called the "__train/test split__" (usually 80/20). At minimum, the test set
+should be as large as the desired forecast horizon (in order to accurately compare).
+ 
+Helpful notes:
+
+* Just because a model fits the training data well, it does not mean it will
+forecast with accuracy
+* If you have enough parameters, you can get a perfect fit
+* Overfitting to the training data is just as bad as underfitting the data
+
+#### __Creating the Train/Test Split__
+
+`filter()` can easily extract a portion of a time series
+```{r}
+aus_production %>%
+  filter(year(Quarter) >= 1995) # extracts all data from 1995 on
+```
+
+`slice()` allows the use of indices
+```{r}
+aus_production %>%
+  slice(n()-19:0) # extracts the last 20 observations (5 years)
+```
+
+`slice()` also works with groups to subset observations from each key
+```{r}
+aus_retail %>%
+  group_by(State, Industry) %>%
+  slice(1:12)
+```
+
+#### __Forecast Errors__
+
+An "error" is the difference between the forecast and the observed value. It 
+differs from residuals in the following ways:
+
+* Residuals are in regards to the training set while errors are in regards to the
+test set
+* Residuals are based on on-step forecasts while errors can involve multi-step
+forecasts
+
+
+#### __Scale-Dependent Measures__
+
+Accuracy measures that are based only on the errors are scale-dependent and cannot 
+be used to make comparison between series that involve different units.
+
+Two most commonly used scale dependent measures:
+
+1. MAE - Mean Absolute Error: $mean(\lvert{e_t}\rvert)$
+2. RMSE - Root Mean Squared Error: $\sqrt{mean(e^2_t)}$
+
+
+#### __Percentage Measures
+
+Percentage measures have the advantage of being unit-free, so can be compared 
+between data sets.The most common is MAPE.
+
+Disadvantages:
+
+* When $y_t=0$ as they can be infinite or undefined.
+* They assume the unit of measurement has a meaningful zero.
+    *Example: percentage error makes no sense when measuring the accuracy of temp 
+    forecasts for F$^o$ or C$^o$ as they have arbitrary zero points.
+* They put a heavier penalty on negative errors than on positive errors
+    * This lead to the development of sMAPE (symmetric MAPE), but this method still
+    involves division by a number close to zero, and the value of sMAPE can be 
+    negative, so it's not really an "absolute measure" at all
+    
+Percentage Measure Formulas
+
+1. MAPE - Mean Absolute Percentage Error: $mean(\lvert{p_t}\rvert)$
+2. sMAPE - symmetric MAPE: $mean(200\lvert{y_t - \hat{y}_t}\rvert/(y_t+\hat{y}_t))$
+
+#### __Scaled Measures__
+
+Methods scale the errors based on the training MAE from a simple forecast method.
+A scaled error is < 1 if it arises from a better forecast than the average one-step
+Naive forecast computed on the training data. It is > 1 if the forecast is worse.
+
+The two scaled measures:
+
+1. MASE - Mean Absolute Scaled Error: $mean(\lvert{q_j}\rvert)$
+2. RMSSE - Root Mean Squared Scaled Error: $\sqrt{mean(q^2_j)}$
+
+$q_j$ is a rather complicated formula you won't remember
+
+__Example__
+```{r}
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+
+beer_train <- recent_production %>%
+  filter(year(Quarter) <= 2007)
+
+beer_fit <- beer_train %>%
+  model(
+    Mean = MEAN(Beer),
+    `Naive` = NAIVE(Beer),
+    `Seasonal Naive` = SNAIVE(Beer),
+    Drift = RW(Beer ~ drift())
+  )
+
+beer_fc <- beer_fit %>%
+  forecast(h=10)
+
+beer_fc %>%
+  autoplot(
+    recent_production,
+    level = NULL
+  ) +
+  labs(
+    y = 'Megalitres',
+    title = 'Forecasts for Quarterly Beer Production'
+  ) +
+  guides(color = guide_legend(title = 'Forecast'))
+
+
+accuracy(beer_fc, recent_production)
+  
+```
+
+Graph shows the three forecast methods applied and the mean. Accuracy metrics
+also shown. Seasonal Naive is obviously the best performer.
+
+Non-seasonal example:
+```{r}
+google_fit <- google_2015 %>%
+  model(
+    Mean = MEAN(Close),
+    Naive = NAIVE(Close),
+    Drive = RW(Close ~ drift())
+  )
+
+google_jan_2016 <- google_stock %>%
+  filter(yearmonth(Date) == yearmonth("2016 Jan"))
+
+google_fc <- google_fit %>%
+  forecast(google_jan_2016)
+
+google_fc %>%
+  autoplot(bind_rows(google_2015, google_jan_2016),
+           level=NULL) +
+  labs(y = "$US",
+       title = "Google Closing Stock Prices from Jan 2015")+
+  guides(color = guide_legend(title = "Forecast"))
+
+
+```
+
+In some instances, one of the simple methods will be best forecasting method,
+but will likely serve as a benchmark to compare how well other methods work.
+
+***
+
+## 5.9 Evaluating Distributional Forecast Accuracy
+
+When evaluating distributional forecasts, we need to use different measures.
+
+#### __Quantile Scores__
+
+  * A low quantile score indicates a better estimate of the quantile
+  * Text does not say what low is, but gives 4.86 as an example answer which 
+  implies this is low
+
+__Example__
+```{r}
+google_fc %>%
+  filter(.model == 'Naive', Date == "2016-01-04") %>%
+  accuracy(google_stock, list(qs=quantile_score), probs=0.10)
+```
+
+### __Scale-Free Comparisons Using Skill Scores__
+
+  * Computing a forecast accuracy measure relative to some benchmark method.
+  * CRPS is a specific skill score that is left undefined by the curriculum as 
+  to its acronym or actual formula.
+
+__Example__
+```{r}
+google_fc %>%
+  accuracy(google_stock, list(skill = skill_score(CRPS)))
+```
+
+Above we are comparing the drift method to the Naive method. Naive is 0 because
+it can't improve on itself. The other two methods have larger CRPS values, so they
+are negative values. The skill value is interpreted as "The drift method is 26.6%
+worse than the Naive method".
+
+`skill_score()`
+  * Will always calculate the the CRPS for the appropriate benchmark. 
+    + Example: when data is seasonal, it will use seasonal naive
+  * Can be used with any accuracy measure:
+    + MSE
+      - Ensure test set is large enough to allow reliable calculation of the error
+      measure
+    + MASE or RMSSE are scale-free and preferred
+    
+***
+
+
+## __5.10 Time Series Cross-Validation__
+
+* For a time series, the cross_validation procedure contains a series of training 
+sub-sets and a series of test sets with only 1 observation.
+* Forecast accuracy is computed by averaging over the test sets.
+
+__Example__
+```{r}
+google_2015_tr <- google_2015 %>%
+  stretch_tsibble(.init = 3, .step = 1) %>%
+  relocate(Date, Symbol, .id)
+
+google_2015_tr
+
+```
+
+Above:
+  * `stretch_tsibble()` creates many training sets
+    + `.init` determines the size of the first training set
+    + `.step` increases each successive training set by that number of steps
+  * for the output, the `.id` column indicates which training set
+  
+Using accuracy to evaluate the forecast accuracy:
+```{r}
+google_2015_tr %>%
+  model(RW(Close ~ drift())) %>%
+  forecast(h = 1) %>%
+  accuracy(google_2015)
+
+google_2015 %>%
+  model(RW(Close ~ drift())) %>%
+  accuracy()
+```
+
+ A good way to choose the best forecasting model is to find the model with the 
+ smallest RMSE computed using time series cross-validation
+ 
+ __Example__
+ Below code evaluates the forecasting performance of 1 to 8-step-ahead drift
+ forecasts. Forecast error increases as the forecast horizon increases.
+ 
+```{r}
+google_2015_tr <- google_2015 %>%
+  stretch_tsibble(.init = 3, .step = 1)
+
+fc <- google_2015_tr %>%
+  model(RW(Close ~ drift())) %>%
+  forecast(h = 8) %>%
+  group_by(.id) %>%
+  mutate(h = row_number()) %>%
+  ungroup()
+
+fc %>%
+  accuracy(google_2015, by = c('h', '.model')) %>%
+  ggplot(aes(x = h, y = RMSE)) +
+  geom_point()
+  
+```
+ 
+ 

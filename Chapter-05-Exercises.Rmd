@@ -5,10 +5,11 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(fpp3)
 ```
 
 
-## 5.1 Exercises
+## 5.11 Exercises
 
 1. Produce forecasts for the following series using whichever of NAIVE(y), 
 SNAIVE(y) or RW(y ~ drift()) is more appropriate in each case:
@@ -47,10 +48,353 @@ brick_fc %>% autoplot(aus_bricks)
   * NSW Lambs (aus_livestock)
 ```{r}
 nsw_lambs <- aus_livestock %>%
-  filter(Animal == 'Lambs', State == 'New South Wales', )
+  filter(Animal == 'Lambs', State == 'New South Wales')
 
 autoplot(nsw_lambs, Count)
+
+
 ```
   
   *  Household wealth (hh_budget).
+```{r}
+aus_wealth <- hh_budget %>%
+  filter(Country == 'Australia') %>%
+  select(Wealth)
+
+autoplot(aus_wealth)
+```
+  
+  
   * Australian takeaway food turnover (aus_retail).
+```{r}
+aus_takeaway <- aus_retail %>%
+  filter(Industry == 'Takeaway food services', State == 'Australian Capital Territory') %>%
+  select(Turnover)
+
+
+aus_takeaway %>%
+  model(RW(Turnover ~ drift())) %>%
+  forecast(h=4) %>%
+  autoplot(aus_takeaway)
+  
+```
+
+2. Use the Facebook stock price (data set gafa_stock) to do the following:
+
+  a. Produce a time plot of the series.
+```{r}
+facebook <- gafa_stock %>%
+  filter(Symbol == 'FB') %>%
+  mutate(day = row_number()) %>%
+  update_tsibble(index = day, regular = TRUE)
+
+autoplot(facebook, Close)
+```
+
+  b. Produce forecasts using the Drift method and plot them.
+```{r}
+facebook %>%
+  model(RW(Close ~ drift())) %>%
+  forecast(h=20) %>%
+  autoplot(facebook)
+```
+  
+  c. Show that the forecasts are identical to extending the line drawn between the first and last observations.
+```{r}
+facebook %>%
+  model(RW(Close ~ drift())) %>%
+  forecast(h=20) %>%
+  autoplot(facebook) +
+  geom_segment(aes(x = 1, y = 54.71, xend = 1258, yend = 131.09))
+
+```
+
+```{r}
+facebook$Close[1258]
+```
+  
+  d. Try using some of the other benchmark functions to forecast the same data set. Which do you think is best? Why?
+```{r}
+facebook %>%
+  model(NAIVE(Close)) %>%
+  forecast(h=20) %>%
+  autoplot(facebook)
+```
+
+The distribution ranges look similar but the point forecasts are, of course,
+different. I think Naive is likely best as this is stock market data.
+
+3. Apply a Seasonal naïve method to the quarterly Australian beer production data 
+from 1992. Check if the residuals look like white noise, and plot the forecasts.
+What do you conclude?
+
+```{r}
+# Extract data of interest
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+# Define and estimate a model
+fit <- recent_production %>% model(SNAIVE(Beer))
+# Look at the residuals
+fit %>% gg_tsresiduals()
+# Look a some forecasts
+fit %>% forecast() %>% autoplot(recent_production)
+
+```
+
+Above residuals do not look to be entirely white noise. They are heteroskedastic
+weighted toward the negatives, they are a non-normal distribution, and they appear
+to have autocorrelation at the quarters. Data would likely benefit from differencing.
+
+
+4. Repeat the previous exercise using the Australian Exports series from `global_economy` 
+and the Bricks series from `aus_production`. Use whichever of NAIVE() or SNAIVE() 
+is more appropriate in each case.
+```{r}
+aus_exports <- global_economy %>%
+  filter(Country == 'Australia') %>%
+  select(Exports)
+
+fit <- aus_exports %>% model(NAIVE(Exports))
+
+fit %>% forecast() %>% autoplot(aus_exports)
+```
+
+No apparent seasonality above, so a Naive model was used.
+
+
+```{r}
+aus_bricks <- aus_production %>%
+  select(Bricks)
+
+fit <- aus_production %>%
+  model(SNAIVE(Bricks))
+
+fc <- fit %>% forecast()
+
+fc %>%
+  autoplot(aus_production)
+```
+
+Model above should definitely use `SNAIVE()`, but for some reason the forecast
+won't plot claiming missing values.
+
+
+5. Produce forecasts for the 7 Victorian series in `aus_livestock` using `SNAIVE()`. 
+Plot the resulting forecasts including the historical data. Is this a reasonable 
+benchmark for these series?
+```{r}
+victorian_livestock <- aus_livestock %>%
+  filter(State == 'Victoria')
+
+#########################
+victorian_bulls <- victorian_livestock %>%
+  filter(Animal == 'Bulls, bullocks and steers')
+
+fit <- victorian_bulls %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_bulls)
+
+########################
+victorian_calves <- victorian_livestock %>%
+  filter(Animal == 'Calves')
+
+fit <- victorian_calves %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_calves)
+
+###########################
+victorian_cattle <- victorian_livestock %>%
+  filter(Animal == 'Cattle (excl. calves)')
+
+fit <- victorian_cattle %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_cattle)
+
+##########################
+victorian_cows <- victorian_livestock %>%
+  filter(Animal == 'Cows and heifers')
+
+fit <- victorian_cows %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_cows)
+
+##########################
+victorian_lambs <- victorian_livestock %>%
+  filter(Animal == 'Lambs')
+
+fit <- victorian_lambs %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_lambs)
+
+###########################
+victorian_pigs <- victorian_livestock %>%
+  filter(Animal == 'Pigs')
+
+fit <- victorian_pigs %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_pigs)
+
+############################
+victorian_sheep <- victorian_livestock %>%
+  filter(Animal == 'Sheep')
+
+fit <- victorian_sheep %>%
+  model(SNAIVE(Count))
+
+fit %>% forecast() %>%
+  autoplot(victorian_sheep)
+  
+
+###########################
+```
+
+Models seem to capture the seasonality in the data. I think this would be a 
+reasonable benchmark.
+
+
+
+6. Are the following statements true or false? Explain your answer.
+
+  a. Good forecast methods should have normally distributed residuals.
+    - True. If the residuals are not normally distributed, there is unaccounted 
+    for bias
+  b. A model with small residuals will give good forecasts.
+    - False. A model will small residuals could be overfit to the training data.
+  c. The best measure of forecast accuracy is MAPE.
+    - False. There are multiple different ways to measure depending on what is
+    being measured.
+  d. If your model doesn’t forecast well, you should make it more complicated.
+    - False. This should not be a tactic for improvement.
+  e. Always choose the model with the best forecast accuracy as measured on the test set.
+    - False. While this may be a good tactic, there are other things to consider.
+
+
+7. For your retail time series (from Exercise 8 in Section 2.10):
+
+  a. Create a training dataset consisting of observations before 2011 using
+
+```{r}
+set.seed(222)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`,1))
+
+myseries_train <- myseries %>%
+  filter(year(Month) < 2011)
+```
+
+  b. Check that your data have been split appropriately by producing the following plot.
+
+```{r}
+autoplot(myseries, Turnover) +
+  autolayer(myseries_train, Turnover, colour = "red")
+```
+
+  c. Fit a Seasonal naïve model using SNAIVE() applied to your training data (myseries_train).\
+```{r}
+fit <- myseries_train %>%
+  model(SNAIVE(Turnover))
+```
+
+  d. Check the residuals. Do the residuals appear to be uncorrelated and normally distributed?
+```{r}
+fit %>% gg_tsresiduals()
+```
+
+  e. Produce forecasts for the test data
+```{r}
+fc <- fit %>%
+  forecast(new_data = anti_join(myseries, myseries_train))
+fc %>% autoplot(myseries)
+```
+
+  f. Compare the accuracy of your forecasts against the actual values.
+```{r}
+fit %>% accuracy()
+fc %>% accuracy(myseries)
+```
+
+  g. How sensitive are the accuracy measures to the amount of training data used?
+
+8. Consider the number of pigs slaughtered in New South Wales (data set aus_livestock).
+
+  a. Produce some plots of the data in order to become familiar with it.
+```{r}
+nsw_pigs <- aus_livestock %>%
+  filter(State == 'New South Wales', Animal == 'Pigs')
+
+autoplot(nsw_pigs)
+gg_season(nsw_pigs)
+gg_subseries(nsw_pigs)
+```
+  
+  b. Create a training set of 486 observations, withholding a test set of 72 
+  observations (6 years).
+```{r}
+train <- nsw_pigs %>% filter(year(Month) < 2013) 
+test <- nsw_pigs %>% filter(year(Month) >= 2013)
+
+```
+  
+  c. Try using various benchmark methods to forecast the training set and compare 
+  the results on the test set. Which method did best?
+```{r}
+
+nsw_pig_fit <- train %>%
+  model(
+    Mean = MEAN(Count),
+    Naive = NAIVE(Count),
+    `Seasonal Naive` = SNAIVE(Count),
+    Drift = RW(Count ~ drift())
+    
+  )
+
+nsw_pig_fc <- nsw_pig_fit %>%
+  forecast(h = 72)
+
+nsw_pig_fc %>%
+  autoplot(nsw_pigs %>% filter(year(Month) >=2010), level=NULL)
+```
+
+  d. Check the residuals of your preferred method. Do they resemble white noise?
+
+9. Create a training set for household wealth (hh_budget) by withholding the last 
+four years as a test set.
+Fit all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
+Compute the accuracy of your forecasts. Which method does best?
+Do the residuals from the best method resemble white noise?
+Create a training set for Australian takeaway food turnover (aus_retail) by withholding the last four years as a test set.
+Fit all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
+Compute the accuracy of your forecasts. Which method does best?
+Do the residuals from the best method resemble white noise?
+We will use the Bricks data from aus_production (Australian quarterly clay brick production 1956–2005) for this exercise.
+
+Use an STL decomposition to calculate the trend-cycle and seasonal indices. (Experiment with having fixed or changing seasonality.)
+Compute and plot the seasonally adjusted data.
+Use a Naïve method to produce forecasts of the seasonally adjusted data.
+Use decomposition_model() to reseasonalise the results, giving forecasts for the original data.
+Do the residuals look uncorrelated?
+Repeat with a robust STL decomposition. Does it make much difference?
+Compare forecasts from decomposition_model() with those from SNAIVE(), using a test set comprising the last 2 years of data. Which is better?
+tourism contains quarterly visitor nights (in thousands) from 1998 to 2017 for 76 regions of Australia.
+
+Extract data from the Gold Coast region using filter() and aggregate total overnight trips (sum over Purpose) using summarise(). Call this new dataset gc_tourism.
+
+Using slice() or filter(), create three training sets for this data excluding the last 1, 2 and 3 years. For example, gc_train_1 <- gc_tourism %>% slice(1:(n()-4)).
+
+Compute one year of forecasts for each training set using the Seasonal naïve (SNAIVE()) method. Call these gc_fc_1, gc_fc_2 and gc_fc_3, respectively.
+
+Use accuracy() to compare the test set forecast accuracy using MAPE. Comment on these.
+
+

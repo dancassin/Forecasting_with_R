@@ -1,0 +1,387 @@
+---
+title: "Time Series Workflow"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(forecast)
+library(feasts)
+library(grid)
+library(gridExtra)
+library(fpp3)
+```
+
+# Load Data Set
+
+A single time series is required for this notebook, and should be saved to "data".
+The column you are interested in should be formatted as a string and pointing to "column".
+
+```{r}
+# Choose a time series 
+# Specify the column you would like to work with
+
+data <- aus_production %>%
+  select(Quarter, Beer)
+
+column <- 'Beer'
+
+data
+```
+
+# Split Data into Train Test
+
+In order to statistically test the accuracy of different models, an 80/20 train/test
+split is employed. It is required to know the frequency of the observations.
+
+```{r}
+train_test_split <- function(dataframe, timeperiod) {
+  # timeperiod = ['yearly', 'quarterly', 'monthly','daily', 'business_daily']
+  # assumed 80/20 split
+  
+  df_length = dim(dataframe)[1]
+  
+  if(timeperiod == 'monthly') {
+    index = round(dim(dataframe)[1]/12 * .8) * 12
+  }
+  else if(timeperiod == 'daily') {
+    index = round(dim(dataframe)[1]/7 * .8) * 7
+  }
+  else if(timeperiod == 'business_daily') {
+    index = round(dim(dataframe)[1]/5 * .8) * 5
+  }
+  else if(timeperiod == 'quarterly') {
+    index = round(dim(dataframe)[1]/4 * .8) * 4
+  }
+  else if(timeperiod == 'yearly'){
+    index = round(dim(dataframe)[1] * .8)
+  }
+  
+  train = dataframe %>%
+    slice(1:index)
+  
+  test = dataframe %>%
+    slice(index+1:df_length)
+
+  return(list(train, test))
+}
+
+train_test <- train_test_split(data, 'quarterly')
+
+train <- train_test[[1]]
+test <- train_test[[2]]
+```
+
+
+# Visualize Data
+
+One of the first steps of any time series project is to visualize your data so
+that you may plan your course of action.
+
+```{r}
+train %>%
+  autoplot(Beer)
+```
+
+# Time Series Stats
+
+The stats returned will guide in the understading of the time series and in
+future processes.
+
+```{r}
+ts_stats <- function(single_timeseries, column) {
+  
+  col_name <- as.name(column)
+
+  ts_features <- single_timeseries %>%
+    features(!!col_name, feature_set(pkgs = "feasts")) 
+  
+  ts_features <- ts_features %>%
+    select(trend_strength,
+           lambda_guerrero,
+           ndiffs,
+           nsdiffs,
+           lb_stat,
+           lb_pvalue,
+           coef_hurst,
+           spectral_entropy
+           )
+  
+  if(ts_features$ndiffs > 0) {
+    print('Data is not stationary')
+  }
+  else
+    print('If no seasonal differencing suggested, data is stationary.')
+  
+  if(ts_features$nsdiffs > 0) {
+    print('Data is Seasonal and may require seasonal differencing')
+  }
+  else
+    print('No seasonality detected')
+
+  if(ts_features$lb_pvalue < 0.05) {
+    print('Data is differentiated from white noise')
+  }
+  else
+    print('Data is white noise')
+  
+  if(ts_features$coef_hurst > .75) {
+    print('Hurst coefficient states: Time series has long memory and thus significant autocorrelations for many lags')
+  }
+  else
+    print('Hurst coefficient states: may have a few significant autocorrelations, but not for many lags')
+  
+  if(ts_features$spectral_entropy > .5) {
+    print('Spectral entropy approaching 1: states time series will be difficult to forecast')
+  }
+  else
+    print('Spectral entropy approaching 0: states time series will be easier to forecast')
+
+  return(ts_features)
+}
+
+train_stats <- ts_stats(train, column)
+
+train_stats
+```
+
+
+# Consider Transformations
+  
+  * Calendar Adjustments
+  * Population Adjustments
+  * Inflation Adjustments
+  * Mathematical Transformations:
+      * Box Cox transform uses the optimal lambda via the Guerrero method from the
+      stats tibble above. Method is helpful when the variance of the time series is 
+      consistently increasing over time.
+
+### Comparison of Original to Transform Using Lambda
+```{r}
+
+transform_comparison <- function(dataframe, column, stats_df, append = FALSE){
+  # Function derives the Box Cox transform and adds it to the original data frame
+  # if append = True. This retains the tsibble format for the transform.
+  # Function plots both original and transform for comparison.
+
+  col_name <- as.name(column)
+  
+  dataframe['transform'] <- BoxCox(dataframe[, {{ column  }}], lambda = stats_df$lambda_guerrero)
+
+  p1 <- dataframe %>%
+    autoplot(!!col_name) +
+    labs(y = 'Original')
+  
+  p2 <- dataframe %>%
+    autoplot(transform) +
+    labs(y = 'Box Cox Transform')
+  
+  grid.arrange(p1, p2, nrow = 2)
+  
+  if(append == TRUE) {
+    return(dataframe['transform'])
+  }
+
+  
+}
+
+
+
+train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
+```
+
+
+# Discovering Seasonality
+
+For data with seasonality, the below produces a plot to view 
+```{r fig.align="center", echo = FALSE,fig.width = 14}
+seasonal_plots <- function(dataframe, column, time_period, line_labels = NULL) {
+  # time_period for gg_season takes 'day', 'week', 'month','year', and NULL
+  # if you prefer it to choose for you
+  
+  col_name <- as.name(column)
+
+  p1 <- dataframe %>%
+    gg_season(!!col_name, period = time_period, labels = line_labels) +
+    labs(title = 'Seasonal Plot')
+  
+  p2 <- dataframe %>%
+    gg_subseries(!!col_name) +
+    labs(title = 'Seasonal Subseries')
+  
+  p3 <- dataframe %>%
+    gg_lag(!!col_name, geom = 'point', lags = 1:12, ) +
+    #facet_grid(rows=4, cols=3) +
+    facet_wrap(~ .lag, ncol=3) +
+    theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+  
+  grid.arrange(p1, p2, p3, layout_matrix = rbind(c(1,3), c(2,3)))
+}
+
+seasonal_plots(train, column, time_period = 'year', line_labels = 'both')
+```
+
+# Decomposition
+```{r}
+decomp <- function(data, column){
+  col_name <- as.name(column)
+  
+  data %>%
+    model(STL((!!col_name) ~ trend(window = 7) + season(window = "periodic"), robust = TRUE)) %>%
+    components() %>%
+    autoplot()
+}
+
+
+decomp(train, column)
+```
+
+
+
+# Establish Benchmark Models
+
+This section determines the models to use based on the train_stats dataframe and 
+fits benchmark models to test the more complicated models against.
+
+```{r}
+
+benchmark_models <- function(dataframe, column, df_stats) {
+
+  col_name <- as.name(column)
+  
+  # Seasonal with Drift
+  if (df_stats$trend_strength > .70 & df_stats$nsdiffs > 0) {
+    df_fit <- dataframe %>%
+      model(
+        Mean = MEAN(!!col_name),
+        `Naïve` = NAIVE(!!col_name),
+        Drift = NAIVE((!!col_name) ~ drift()),
+        `Seasonal Naïve` = SNAIVE(!!col_name),
+      )
+  }
+  # Seasonal Only
+  else if (df_stats$trend_strength < .70 & df_stats$nsdiffs > 0){
+    df_fit <- dataframe %>%
+      model(
+        Mean = MEAN(!!col_name),
+        `Naïve` = NAIVE(!!col_name),
+        `Seasonal Naïve` = SNAIVE(!!col_name)
+        )
+  }
+  # Drift Only
+  else if (df_stats$trend_strength > .70 & df_stats$nsdiffs < 1) {
+    df_fit <- dataframe %>%
+      model(
+        Mean = MEAN(!!col_name),
+        `Naïve` = NAIVE(!!col_name),
+        Drift = NAIVE((!!col_name) ~ drift())
+        )
+  }
+  # No Seasonality or Trend
+  else
+    df_fit <- dataframe %>%
+      model(
+        Mean = MEAN(!!col_name),
+        `Naïve` = NAIVE(!!col_name),
+    )
+
+  
+  return(df_fit)
+}
+
+train_fit <- benchmark_models(train, column, train_stats)
+
+train_fit
+```
+
+# Plot Benchmark Models
+
+```{r}
+plot_benchmark_models <- function(dataframe, test_set, df_fit, zoom_pct = 0.0){
+  # zoom pct takes range from 0.0 - 0.8 
+  test_set_length <- dim(test_set)[1]
+  
+  data_length <- dim(dataframe)[1]
+  zoom_point <- round(data_length * zoom_pct)
+  truncated_range <- dataframe[zoom_point:data_length,]
+  
+  
+  fc <- df_fit %>% forecast(h=test_set_length)
+
+  fc %>%
+    autoplot(truncated_range, level = NULL) +
+    labs(title = "Benchmark Models") +
+    autolayer(test_set)
+
+  
+}
+
+plot_benchmark_models(data, test, train_fit, zoom_pct = .5)
+```
+# Plot Best Benchmark Model's Residuals
+```{r}
+plot_best_benchmark_residuals <- function(fitted_models, dataframe, column) {
+  col_name <- as.name(column)
+  
+  benchmark_data <- augment(fitted_models) %>%
+    features(.innov, ljung_box, lag = 10) %>%
+    arrange(lb_stat)
+  
+  print(benchmark_data[1,])
+  
+  best_benchmark <- benchmark_data[1,1]
+  
+  if (best_benchmark == 'Seasonal Naïve') {
+    data %>%
+      model(`Seasonal Naïve` = SNAIVE(!!col_name)) %>%
+      gg_tsresiduals()
+  } else if (best_benchmark == 'Drift') {
+    data %>%
+      model(Drift = NAIVE((!!col_name) ~ drift())) %>%
+      gg_tsresiduals()
+  } else if (best_benchmark == 'Naïve') {
+    data %>%
+      model(`Naïve` = NAIVE(!!col_name)) %>%
+      gg_tsresiduals()
+  } else if (best_benchmark == 'Mean') {
+    data %>%
+      model(Mean = MEAN(!!col_name)) %>%
+      gg_tsresiduals()
+  }
+  
+  
+}
+
+plot_best_benchmark_residuals(train_fit, data, column)
+```
+
+
+
+
+
+
+
+# Autocorrelation and Partial Autocorrelation
+```{r}
+acf_pacf <- function(dataframe, column) {
+  col_name <- as.name(column)
+  
+  p1 <- dataframe %>%
+    ACF({{col_name}}, lag_max=48) %>%
+    autoplot() +
+    labs(y = 'ACF')
+  
+  p2 <- dataframe %>%
+    PACF({{col_name}}, lag_max=48) %>%
+    autoplot() +
+    labs(y = 'PACF')
+  
+  grid.arrange(p1, p2, nrow = 2)
+}
+
+acf_pacf(train, column)
+```
+

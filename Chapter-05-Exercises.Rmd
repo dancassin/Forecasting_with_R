@@ -367,23 +367,144 @@ nsw_pig_fc %>%
   autoplot(nsw_pigs %>% filter(year(Month) >=2010), level=NULL)
 ```
 
-  d. Check the residuals of your preferred method. Do they resemble white noise?
+It is difficult to declare a winner here base on sight. Seasonal Naive is overfit
+ to the previous year's data. Drift might actually be best potentially.
 
-9. Create a training set for household wealth (hh_budget) by withholding the last 
+  d. Check the residuals of your preferred method. Do they resemble white noise?
+```{r}
+train %>%
+  model(Drift = RW(Count ~ drift())) %>%
+  gg_tsresiduals() 
+
+train %>%
+  model(SNAIVE(Count)) %>%
+  gg_tsresiduals()
+
+train %>%
+  model(NAIVE(Count)) %>%
+  gg_tsresiduals()
+```
+```{r}
+augment(nsw_pig_fit) %>% features(.innov, ljung_box, lag=24, dof=1)
+```
+
+None of these models are perfect, of course. Seasonal Naive has a better lb_stat,
+but residuals seem to be heteroskedastic compared to the Drift method, and pvalue
+is significant meaning the residuals differ from white noise. 
+
+9. a. Create a training set for household wealth (hh_budget) by withholding the last 
 four years as a test set.
-Fit all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
-Compute the accuracy of your forecasts. Which method does best?
-Do the residuals from the best method resemble white noise?
-Create a training set for Australian takeaway food turnover (aus_retail) by withholding the last four years as a test set.
-Fit all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
-Compute the accuracy of your forecasts. Which method does best?
-Do the residuals from the best method resemble white noise?
-We will use the Bricks data from aus_production (Australian quarterly clay brick production 1956–2005) for this exercise.
+```{r}
+hh_wealth_train <- hh_budget %>%
+  filter(Year <= 2012, Country == 'Australia')
+
+hh_wealth_test <- hh_budget %>%
+  filter(Year > 2012, Country == 'Australia')
+```
+
+  b. Fit all the appropriate benchmark methods to the training set and forecast 
+  the periods covered by the test set.
+```{r}
+hh_wealth_fit <- hh_wealth_train %>%
+  model(
+    Mean = MEAN(Wealth),
+    Naive = NAIVE(Wealth),
+    Drift = RW(Wealth ~ drift())
+    
+  )
+
+hh_wealth_fc <- hh_wealth_fit %>%
+  forecast(h = 4)
+
+hh_wealth_fc %>%
+  autoplot(hh_budget %>% select(Wealth), level=NULL)
+```
+
+  c. Compute the accuracy of your forecasts. Which method does best?
+```{r}
+accuracy(hh_wealth_fc, hh_wealth_test)
+```
+Unsurprisingly, Drift is the best method here although it barely fits the data.
+  
+  
+  d. Do the residuals from the best method resemble white noise?
+```{r}
+hh_wealth_drift <- hh_wealth_train %>%
+  model(
+    Drift = RW(Wealth ~ drift()))
+
+gg_tsresiduals(hh_wealth_drift)
+
+
+augment(hh_wealth_drift) %>% features(.innov, ljung_box, lag=10, dof=1)
+```
+
+Residuals do appear to be white noise.
+
+
+10. a. Create a training set for Australian takeaway food turnover (aus_retail) 
+by withholding the last four years as a test set.
+  b. Fit all the appropriate benchmark methods to the training set and forecast 
+  the periods covered by the test set.
+```{r}
+aus_takeaway <- aus_retail %>%
+  filter(Industry == 'Takeaway food services') %>%
+  select(State, Industry, Month, Turnover) %>%
+  summarize(TotalT = sum(Turnover))
+#Takeaway food services
+
+train_aus_takeaway <- aus_takeaway %>%
+  filter(year(Month) < 2015)
+
+test_aus_takeaway <- aus_takeaway %>%
+  filter(year(Month) >= 2015)
+```
+
+```{r}
+aus_takeaway_fit <- train_aus_takeaway %>%
+  model(
+    Mean = MEAN(TotalT),
+    Naive = NAIVE(TotalT),
+    `Seasonal Naive` = SNAIVE(TotalT),
+    `Seasonal Naive Drift` = SNAIVE(TotalT ~ drift()),
+    Drift = RW(TotalT ~ drift())
+    
+  )
+
+aus_takeaway_fc <- aus_takeaway_fit %>%
+  forecast(h = 48)
+
+aus_takeaway_fc %>%
+  autoplot(aus_takeaway %>% select(TotalT), level=NULL)
+```
+  
+  c. Compute the accuracy of your forecasts. Which method does best?
+```{r}
+accuracy(aus_takeaway_fc, test_aus_takeaway)
+```
+  
+  Seasonal Naive with drift performs best
+  
+  d. Do the residuals from the best method resemble white noise?
+```{r}
+aus_takeaway_snd <- train_aus_takeaway %>%
+  model(`Seasonal Naive Drift` = SNAIVE(TotalT ~ drift()))
+
+gg_tsresiduals(aus_takeaway_snd)
+
+augment(aus_takeaway_snd) %>% features(.innov, ljung_box, lag=24, dof=1)
+```
+
+Residuals are not differentiated from white noise.
+  
+
+11. We will use the Bricks data from aus_production (Australian quarterly clay 
+brick production 1956–2005) for this exercise.
 
 Use an STL decomposition to calculate the trend-cycle and seasonal indices. (Experiment with having fixed or changing seasonality.)
 Compute and plot the seasonally adjusted data.
 Use a Naïve method to produce forecasts of the seasonally adjusted data.
-Use decomposition_model() to reseasonalise the results, giving forecasts for the original data.
+Use decomposition_model() to reseasonalize the results, giving forecasts for the original data.
 Do the residuals look uncorrelated?
 Repeat with a robust STL decomposition. Does it make much difference?
 Compare forecasts from decomposition_model() with those from SNAIVE(), using a test set comprising the last 2 years of data. Which is better?

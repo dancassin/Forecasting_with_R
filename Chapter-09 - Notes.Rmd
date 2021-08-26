@@ -1,0 +1,226 @@
+---
+title: "Ch 8 Notes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(fpp3)
+```
+
+# Chapter 8: Exponential Smoothing
+
+__Basic Concept__: Exponential smoothing is a model that weights the averages of
+past observations where the weights decay exponentially as observations get older.
+In short - newer observations mean more.
+
+
+## 8.1 Simple Exponential Smoothing (SES)
+
+__SES__: suitable for forecasting data with no clear trend or seasonal pattern
+
+__Example__
+```{r}
+algeria_economy <- global_economy %>%
+  filter(Country == "Algeria")
+algeria_economy %>%
+  autoplot(Exports) +
+  labs(y = "% of GDP", title = "Exports: Algeria")
+```
+```{r}
+# Estimate parameters
+fit <- algeria_economy %>%
+  model(ETS(Exports ~ error("A") + trend("N") + season("N")))
+fc <- fit %>%
+  forecast(h = 5)
+```
+
+The A's and N's above stand for Additive and NULL, respectively, as this is a 
+forecast for a series with no trend or seasonality.
+
+```{r}
+fc %>%
+  autoplot(algeria_economy) +
+  geom_line(aes(y = .fitted), col="#D55E00",
+            data = augment(fit)) +
+  labs(y="% of GDP", title="Exports: Algeria") +
+  guides(colour = "none")
+```
+
+Graph shows forecast and one-step-ahead fitted values (orange).
+
+Large prediction interval shows large uncertainty; using the mean value alone 
+would be misleading.
+
+***
+
+
+## 8.2 Methods with Trend
+
+__Holt's Linear Trend__: allowed SES to forecast trending data.
+
+
+__Example__
+```{r}
+aus_economy <- global_economy %>%
+  filter(Code == "AUS") %>%
+  mutate(Pop = Population / 1e6)
+autoplot(aus_economy, Pop) +
+  labs(y = "Millions", title = "Australian population")
+```
+
+Holt's linear trend method is employed by making the `trend()` argument Additive.
+Smoothing params for the level, trend, and first fitted values are estimated by 
+minimizing SSE.
+
+
+__Damped Trend Method__: Holt's trend tends to over forecast, especially with
+forecasts far into the future. Dampening introduces a param that flattens to 
+horizontal as the forecast continues. 
+
+`phi` ($\phi$) is an argument for the dampening amount. At 1, it is the same as using a 
+non-dampening method. Usually restricted to values between 0.8 and 9.8.
+
+```{r}
+aus_economy %>%
+  model(
+    `Holt's method` = ETS(Pop ~ error("A") +
+                       trend("A") + season("N")),
+    `Damped Holt's method` = ETS(Pop ~ error("A") +
+                       trend("Ad", phi = 0.95) + season("N"))
+  ) %>%
+  forecast(h = 15) %>%
+  autoplot(aus_economy, level = NULL) +
+  labs(title = "Australian population",
+       y = "Millions") +
+  guides(colour = guide_legend(title = "Forecast"))
+```
+
+
+***
+
+## 8.3 Methods with Seasonality
+
+__Holt-Winter's Method__: contains three smoothing equations (level,
+trend, seasonal) each with a smoothing param ($\alpha$, $\beta$, $\gamma$), and 
+_m_ to denote the seasonal freq. 
+
+   * Additive Method: preferred when seasonal variations are constant
+   
+      - Expressed in absolute terms in scale of series
+      - series is seasonally adjusted by subtracting the seasonal component
+      - Seasonal component adds up to ~0 within 1 year span
+      
+   * Multiplicative Method: preferred when seasonal variations change proportional
+   to the level of the series
+   
+      - Expressed in percentages
+      - Seasonally adjusted by dividing by the seasonal component
+      - Seasonal component adds up to _m_ within 1 year span
+
+__Example__
+```{r}
+aus_holidays <- tourism %>%
+  filter(Purpose == "Holiday") %>%
+  summarise(Trips = sum(Trips)/1e3)
+fit <- aus_holidays %>%
+  model(
+    additive = ETS(Trips ~ error("A") + trend("A") +
+                                                season("A")),
+    multiplicative = ETS(Trips ~ error("M") + trend("A") +
+                                                season("M"))
+  )
+fc <- fit %>% forecast(h = "3 years")
+fc %>%
+  autoplot(aus_holidays, level = NULL) +
+  labs(title="Australian domestic tourism",
+       y="Overnight trips (millions)") +
+  guides(colour = guide_legend(title = "Forecast"))
+```
+
+__Holt Winter's Damped__: can be used with additive and multiplicative methods,
+but multiplicative typically provides accurate forecasts for seasonal data
+
+__Example__
+Multiplicative model with damped trend "Ad" on daily data with _m_=7.
+```{r}
+sth_cross_ped <- pedestrian %>%
+  filter(Date >= "2016-07-01",
+         Sensor == "Southern Cross Station") %>%
+  index_by(Date) %>%
+  summarise(Count = sum(Count)/1000)
+sth_cross_ped %>%
+  filter(Date <= "2016-07-31") %>%
+  model(
+    hw = ETS(Count ~ error("M") + trend("Ad") + season("M"))
+  ) %>%
+  forecast(h = "2 weeks") %>%
+  autoplot(sth_cross_ped %>% filter(Date <= "2016-08-14")) +
+  labs(title = "Daily traffic: Southern Cross",
+       y="Pedestrians ('000)")
+```
+
+Model has identified weekly seasonal pattern and increasing trend 
+
+
+***
+
+
+## 8.4 A Taxonomy of Exponential Smoothing Methods
+
+There are a lot of combinations of smoothing methods. 
+
+
+***
+
+
+## 8.5 Innovations of State Space Models for Exponential Smoothing
+
+__state space model__: consists of a measurement equation that describes the
+observed data and some state equations that describe how the unobserved states
+(level, trend, season) change over time.
+
+This statistical models in this section generate forecast intervals via a stochastic
+data generation process.
+
+Honestly, all of these models would be figure out automatically with R minimizing
+AICc.
+
+***
+
+
+## 8.6 Model Selection
+
+R automatically uses AICc to choose the best model when using `ETS()`
+
+```{r}
+aus_holidays <- tourism %>%
+  filter(Purpose == "Holiday") %>%
+  summarise(Trips = sum(Trips)/1e3)
+fit <- aus_holidays %>%
+  model(ETS(Trips))
+report(fit)
+```
+`report()` outputs both the $\alpha$ and $\gamma$ as well as the estimates for the 
+initial states of the params. Small $\gamma$ values indicates seasonal components 
+change very little over time.
+
+***
+
+## 8.7 Forecasting with ETS Models
+
+Just like any other model, use `forecast()`.
+
+```{r}
+fit %>%
+  forecast(h = 8) %>%
+  autoplot(aus_holidays)+
+  labs(title="Australian domestic tourism",
+       y="Overnight trips (millions)")
+```
+
+
+***
+
+

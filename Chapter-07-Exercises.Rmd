@@ -1,0 +1,309 @@
+---
+title: "7.10 Exercirses"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(fpp3)
+```
+
+1. Half-hourly electricity demand for Victoria, Australia is contained in vic_elec. 
+Extract the January 2014 electricity demand, and aggregate this data to daily with 
+daily total demands and maximum temperatures.
+
+```{r}
+jan14_vic_elec <- vic_elec %>%
+  filter(yearmonth(Time) == yearmonth("2014 Jan")) %>%
+  index_by(Date = as_date(Time)) %>%
+  summarise(
+    Demand = sum(Demand),
+    Temperature = max(Temperature)
+  )
+```
+  
+  a. Plot the data and find the regression model for Demand with temperature as 
+  an explanatory variable. Why is there a positive relationship?
+```{r}
+fit_vic_elec <- jan14_vic_elec %>%
+  model(TSLM(Demand ~ Temperature))
+
+augment(fit_vic_elec) %>%
+  ggplot(aes(x = Demand, y = .fitted)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1)
+```
+
+  b. Produce a residual plot. Is the model adequate? Are there any outliers or 
+  influential observations?
+
+```{r}
+fit_vic_elec %>% gg_tsresiduals()
+```
+
+  c. Use the model to forecast the electricity demand that you would expect for the 
+next day if the maximum temperature was 15∘C and compare it with the forecast if 
+the with maximum temperature was 35∘C. Do you believe these forecasts? 
+```{r}
+fit_elec <- jan14_vic_elec %>%
+  model(TSLM(Demand ~ Temperature))
+
+new_temps <- scenarios(
+  '15 Deg' = new_data(jan14_vic_elec, 1) %>%
+    mutate(Temperature = 15),
+  '35 Deg' = new_data(jan14_vic_elec, 1) %>%
+    mutate(Temperature = 35)
+)
+
+fcast <-  forecast(fit_elec, new_temps)
+
+jan14_vic_elec %>%
+  autoplot(Demand) +
+  autolayer(fcast)
+```
+
+```{r}
+agg_vic_elec <- vic_elec %>%
+  index_by(Date = as_date(Time)) %>%
+  summarise(
+    Demand = sum(Demand),
+    Temperature = max(Temperature))
+
+agg_vic_elec
+```
+
+```{r}
+agg_vic_elec %>%
+  ggplot(aes(x = Temperature, y = Demand)) +
+  labs(y = "Demand",
+       x = "Temp") +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+The high bias of the model is insufficient for prediction. Electricity demand
+rises at the temperature extremes and a simple linear model will under fit the 
+data.
+
+
+
+2. Data set olympic_running contains the winning times (in seconds) in each Olympic Games sprint, middle-distance and long-distance track events from 1896 to 2016.
+
+  a. Plot the winning time against the year for each event. Describe the main features of the plot.
+  b. Fit a regression line to the data for each event. Obviously the winning times have been decreasing, but at what average rate per year?
+  c. Plot the residuals against the year. What does this indicate about the suitability of the fitted lines?
+```{r}
+womens_races <- olympic_running %>%
+  filter(Sex == 'women')
+
+run_100m <- womens_races %>% 
+  filter(Length == 100)
+
+run_100m %>%
+  ggplot(aes(x = Year, y = Time)) +
+  labs(y = "Time",
+       x = "Year") +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+
+
+fit_100m <- run_100m %>%
+  model(tslm = TSLM(Time ~ Year))
+
+report(fit_100m) # average rate .014 seconds/year
+
+gg_tsresiduals(fit_100m) # residuals are normally distributed and no significant autocorrelation
+
+augment(fit_100m) %>%
+  ggplot(aes(x = Year, y = .resid)) +
+  geom_point() +
+  labs(y = 'Residuals',
+       x = 'Actual Values') # residuals show no correlation or pattern with year implying we are correctly dealing with a linear model
+
+```
+
+
+  d. Predict the winning time for each race in the 2020 Olympics. Give a prediction interval for your forecasts. What assumptions have you made in these calculations?
+  
+```{r}
+fc_100m <- forecast(fit_100m)
+
+fc_100m
+```
+```{r}
+run_100m
+
+```
+
+
+```{r}
+fc_100m %>%
+  autoplot(run_100m) +
+  labs(title = "Women's 100m Race",
+      y = 'Time')
+```
+
+Assumptions inherent in the model is that with enough years, race time approaches
+0, which is impossible. An inverse exponential curve would likely be the best fit
+with projections that included the maximum limits to our biology.
+
+***
+
+4. The data set `souvenirs` concerns the monthly sales figures of a shop which opened in January 1987 and sells gifts, souvenirs, and novelties. The shop is situated on the wharf at a beach resort town in Queensland, Australia. The sales volume varies with the seasonal population of tourists. There is a large influx of visitors to the town at Christmas and for the local surfing festival, held every March since 1988. Over time, the shop has expanded its premises, range of products, and staff.
+
+  a. Produce a time plot of the data and describe the patterns in the graph. 
+  Identify any unusual or unexpected fluctuations in the time series.
+
+
+Definite seasonality as mentioned in the question with increasing variance through time and slight trend.
+
+  b. Explain why it is necessary to take logarithms of these data before fitting a model.
+
+The variance of the data requires a log transformation. 
+  
+  c. Fit a regression model to the logarithms of these sales data with a linear 
+  trend, seasonal dummies and a “surfing festival” dummy variable.
+
+
+```{r}
+lambda <- souvenirs %>%
+  features(Sales, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+log_souvenirs <- box_cox(souvenirs$Sales, lambda=lambda) 
+
+souvenirs_ts <- cbind(souvenirs, log_souvenirs) %>%
+  as_tsibble()
+
+fit_log_souvenirs <- souvenirs_ts %>%
+  model(TSLM(log_souvenirs ~ trend() + season()))
+
+fc <- forecast(fit_log_souvenirs, h=36)
+
+backtrans_mean_fc <- exp(fc$.mean)
+
+fc <- cbind(fc, backtrans_mean_fc) %>%
+  as_tsibble()
+```
+
+
+```{r}
+fc
+```
+
+
+```{r}
+souvenirs_ts %>%
+  autoplot(Sales) +
+  autolayer(fc, .vars = backtrans_mean_fc)
+  
+```
+
+
+
+Plot the residuals against time and against the fitted values. Do these plots reveal any problems with the model?
+```{r}
+augment(fit_log_souvenirs) %>%
+  ggplot(aes(x = Month, y = .resid)) +
+  geom_point() +
+  labs(y = 'Residuals', x = 'Time')
+
+augment(fit_log_souvenirs) %>%
+  ggplot(aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  labs(y = 'Fitted', x = 'Time')
+
+
+augment(fit_log_souvenirs) %>%
+  ggplot(aes(x = log_souvenirs, y = .fitted)) +
+  geom_point() +
+  labs(y = 'Fitted', x = 'Log Values') +
+  geom_abline(intercept = 0, slope = 1)
+```
+
+Residuals plotted against time do not seem to have a pattern, which suggest
+we do not need further predictors.
+Residuals plotted against fitted values suggest errors are homoscedastic
+Fitted values plotted against the data show a good model fit
+
+
+  e. Do boxplots of the residuals for each month. Does this reveal any problems with the model?
+```{r}
+augment(fit_log_souvenirs) %>%
+  ggplot(aes(x = Month, y = .resid)) +
+  geom_point() +
+  labs(y = 'Residuals', x = 'Time')
+```
+
+
+
+f. What do the values of the coefficients tell you about each variable?
+```{r}
+report(fit_log_souvenirs)
+```
+
+
+g. What does the Ljung-Box test tell you about your model?
+```{r}
+fit_log_souvenirs %>%
+  gg_tsresiduals()
+
+augment(fit_log_souvenirs) %>%
+  features(.innov, ljung_box, lag=10, dof=2)
+```
+
+
+***
+
+5. The us_gasoline series consists of weekly data for supplies of US finished motor 
+gasoline product, from 2 February 1991 to 20 January 2017. The units are in “million 
+barrels per day.” Consider only the data to the end of 2004.
+```{r}
+us_gasoline
+
+train_gas <- us_gasoline %>%
+  filter_index(~ "2004 W52")
+
+tail(train_gas)
+```
+
+
+  a. Fit a harmonic regression with trend to the data. Experiment with changing 
+  the number Fourier terms. Plot the observed gasoline and fitted values and comment on what you see.
+```{r}
+fourier_gas <- train_gas %>%
+  model(TSLM(Barrels ~ trend() + fourier(K=12)))
+
+augment(fourier_gas) %>%
+  ggplot(aes(x = Week)) +
+  geom_line(aes(y = Barrels, colour = "Data")) +
+  geom_line(aes(y = .fitted, colour = "Fitted")) +
+  scale_colour_manual(
+    values = c(Data = "black", Fitted = "#D55E00")
+  ) +
+  labs(y = "Million Barrels per Day",
+       title = "US Gas Production") +
+  guides(colour = guide_legend(title = "Series"))
+```
+  
+  
+  b. Select the appropriate number of Fourier terms to include by minimizing the 
+  AICc or CV value.
+```{r}
+glance(fourier_gas) %>%
+  select(CV, AICc)
+```
+  
+  
+  c. Plot the residuals of the final model using the gg_tsresiduals() function and 
+  comment on these. Use a Ljung-Box test to check for residual autocorrelation.
+```{r}
+gg_tsresiduals(fourier_gas)
+```
+```{r}
+ndiffs(train_gas)
+
+```
+  
+  d. Generate forecasts for the next year of data and plot these along with the 
+  actual data for 2005. Comment on the forecasts.

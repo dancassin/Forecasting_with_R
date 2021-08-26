@@ -1,0 +1,642 @@
+---
+title: "Ch 7 Notes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(fpp3)
+```
+
+# Chapter 7: Time Series Regression Models
+
+__Basic Concept__: Forecast the time series $y$ assuming it has linear relationship
+with other time series $x$
+
+__Forecast Variable__: $y$, regressand, dependent or explained variable
+__Predictor Variable__: $x$, regressor, independent, explanatory variable
+
+
+## 7.1 The Linear Model
+
+### Simple Linear
+
+Formula:
+$$y_t = \beta_0 + \beta_1x_t + \epsilon_t$$
+
+  * $\beta_0$ - represents the predicted value of $y$ when $x$=0
+  * $\beta_1$ - slope of the line representing the average predicted change in 
+  $y$ resulting from a one unit increase in $x$
+  * $\epsilon_t$ - error term is the deviation of the straight line model
+  
+__Example__
+How is consumption expenditure $y$ affected by disposable income $x$
+```{r}
+us_change %>%
+  pivot_longer(c(Consumption, Income), names_to="Series") %>%
+  autoplot(value) +
+  labs(y = "% change")
+```
+
+ As a scatter plot of consumption changes against income changes with regression line
+```{r}
+us_change %>%
+  ggplot(aes(x = Income, y = Consumption)) +
+  labs(y = "Consumption (Quarterly % Change)",
+       x = "Income (Quarterly % Change") +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE
+              )
+
+```
+ 
+ The equation is estimated using `TSLM()`
+ 
+```{r}
+us_change %>%
+  model(TSLM(Consumption ~ Income)) %>%
+  report()
+```
+ 
+Fitted line has a positive slope indicating positive relationship between the two.
+The coefficient shows that a one unit increase in $x$ results in an average of 
+0.27 increase of $y$. Or a 1% increase in personal disposable income results in 
+an average increase of 0.27 percentage points in personal consumption expenditure.
+
+
+### Multiple Linear Regression
+This Phrase is used when there are two or more predictor variables.
+
+- Each predictor variable must be numeric
+- Each coefficient measures marginal effects as they take in to account the 
+effects of each predictor
+- Can create more accurate forecasts as we assume 
+
+
+### Assumptions
+
+We assume the following with a linear regression:
+
+- model is a reasonable approximation to reality
+- errors have mean of zero; otherwise forecast systematically biased
+- errors are not autocorrelated. If so, there is more information in the data
+that could be used in the prediction
+- errors are unrelated to predictor variables
+
+Also helpful to have errors normally distributed with constant variance
+
+***
+
+
+## 7.2 Least Squares Estimation
+
+Provides a way of choosing the coefficients effectively by minimizing the sum of 
+the squared errors.
+
+`TSLM()` fits a linear regression model to time series data. 
+
+__Example__
+```{r}
+fit_consMR <- us_change %>%
+  model(tslm = TSLM(Consumption ~ Income + Production + Unemployment + Savings))
+
+report(fit_consMR)
+```
+
+-  First column is the estimate for the coefficient of each predictor variable
+- Second column gives its standard error
+- 't value' is the ratio of an estimated coefficient to its standard error
+- 'p value' is the measure of significance for the predictor variable
+
+The last two columns are not particularly helpful in forecasting.
+
+
+### Fitted Values 
+
+Predictions of $y$ can be obtained by using the estimated coefficients and setting
+the error term to zero. (Note these are predictions of data used to estimate the
+model, not forecasts of future values of $y_t$).
+
+__Example__
+```{r}
+augment(fit_consMR) %>%
+  ggplot(aes(x = Quarter)) +
+  geom_line(aes(y = Consumption, color = 'Data')) +
+  geom_line(aes(y = .fitted, colour = 'Fitted')) +
+  labs(y = NULL, 
+       title = 'Percent Change in US Consumption Expenditure') +
+  scale_colour_manual(values = c(Data = 'black', Fitted = '#D55E00'))+
+  guides(color = guide_legend(title=NULL))
+```
+```{r}
+augment(fit_consMR) %>%
+  ggplot(aes(x = Consumption, y = .fitted)) +
+  geom_point() +
+  labs(
+    y = 'Fitted Values',
+    x = 'Actual Values',
+    title = 'Percent Change in Us Consumption Expenditure'
+  ) +
+  geom_abline(intercept = 0, slope = 1)
+```
+
+The correlation between these variables is $r = 0.877$ with $R^2 = 0.768$. So, 
+model explains 76.8% of the data. Compared to the $R^2$ value of .15 in section 
+7.1, adding the three extra predictors allowed more of the data to be explained.
+
+
+### Goodness of Fit
+
+$R^2$ is the typical measurement used to determine goodness of fit for a linear
+model. This is calculated as the square of the correlation between the observed 
+$y$ values and the predicted $\hat{y}$ values
+
+In a simple linear regression, the value of $R^2$ is also equal to the square of 
+the correlation between $x$ and $y$.
+
+$R^2$ lies between 0 and 1
+If predictions are close to actual values, we expect $R^2$ to be close to 1. 
+If predictions are unrelated to actual values, then $R^2 = 0$
+
+Caveat: $R^2$ value will never decrease when adding an extra predictor. Thus
+it can lead to overfitting. Ensure you are validating the model with test data.
+
+
+### Standard Error of the Regression
+
+Another measure is called "Residual Standard Error". The standard error is related 
+to the size of the average error that the model produces. We ca ncompare this error
+to the sample mean of $y$ or with the standard deviation of $y$.
+
+***
+
+## 7.3 Evaluating the Regression Model
+
+Residuals in a regression model are similar to residuals we've seen so far, and
+are calculated in a similar fashion: as the difference between $y$ and $\hat{y}$
+
+After selecting the regression variables and fitting a model, it is necessary
+to plot the residuals to check that the assumptions have been satisfied.
+
+### ACF Plot of Residuals
+
+It is very common to find autocorrelation in the residuals of a time series 
+regression model because time series values are highly likely to be similar to
+the values preceding it.
+
+
+### Histograms of the Residuals
+
+Always check if the residuals are normally distributed.
+
+
+__Example__
+```{r}
+fit_consMR %>% gg_tsresiduals()
+```
+```{r}
+augment(fit_consMR) %>%
+  features(.innov, ljung_box, lag = 10, dof = 5)
+```
+
+Regarding the above:
+
+- the heteroskedasticity will potentially make the prediction 
+interval coverage inaccurate. 
+- Histogram shows residuals slightly skewed.
+- Autocorrelation shows spike at lag 7, and significant Ljung-Box
+test at 5%, however it is unlikely to impact the forecasts.
+
+### Residual Plots Against Predictors
+
+We expect residuals to be random without showing patterns. Best way to check
+is by plotting residuals against each predictor variable as well as variables 
+that are not in the model. If any show a pattern, they may need to be added
+to the model.
+
+__Example__
+```{r}
+us_change %>%
+  left_join(residuals(fit_consMR), by = 'Quarter') %>%
+  pivot_longer(Income:Unemployment,
+               names_to = 'regressor', values_to = 'x') %>%
+  ggplot(aes(x=x, y=.resid)) +
+  geom_point() +
+  facet_wrap(. ~ regressor, scales = 'free_x') +
+  labs(y = 'Residuals', x = '')
+```
+
+Above residuals look to be randomly scattered.
+
+### Residual Plots Against Fitted Values
+
+A plot of the residuals against the fitted values should also show no pattern. If
+there is a pattern, errors may be heteroskedastic, meaning the variance of the 
+errors is not constant. If there is a pattern, a transformation of the forecast
+variable may be needed.
+
+__Example__
+```{r}
+augment(fit_consMR) %>%
+  ggplot(aes(x = .fitted, y = .resid)) +
+  geom_point() + labs(x = 'Fitted', y = 'Residuals')
+```
+
+Above, the randomness of the scatterplot suggests errors are homoscedastic.
+
+
+### Outliers and Influential Observations
+
+Sometimes an extreme outlier can have an outsized influence on the data. It is 
+important to determine if the outlier is an incorrect entry or is simply different.
+
+
+### Spurious Regression
+
+Regressing a non-stationary time series can lead to spurious regressions. Signs 
+of spurious regression:
+
+- High R2 accompanies by high residual autocorrelation
+
+```{r}
+fit <- aus_airpassengers %>%
+  filter(Year <= 2011) %>%
+  left_join(guinea_rice, by = "Year") %>%
+  model(TSLM(Passengers ~ Production))
+report(fit)
+```
+```{r}
+fit %>% gg_tsresiduals()
+```
+***
+
+## 7.4 Some Useful Predictors
+
+### Trend
+
+A trend variable can be specified in the `TSLM()` function using  `trend()`
+
+
+
+### Dummy Variables
+
+When you have categorical variables, and would like to use them as a predictor,
+turn them into a "dummy variable" by one-hot encoding. For example, if a "yes/no"
+or "T/F" column, the column would be converted to "1/0" respectively. You will
+always need one fewer column than unique categories.
+
+
+### Seasonal Dummy Variables
+
+For example, if you wanted to see how weekdays could be used as a prediction,
+you would only need 6 columns of 0/1
+
+`TSLM()` function will automatically handle this when calling `season()`
+
+__Example__
+```{r}
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+
+recent_production %>%
+  autoplot(Beer) +
+  labs( y="Megalitres",
+        title='Australian Quarterly Beer Production')
+```
+```{r}
+fit_beer <- recent_production %>%
+  model(TSLM(Beer ~ trend() + season()))
+        
+report(fit_beer)
+```
+
+The above coefficients explain:
+
+- the trend accounts for a decrease of -.34 megalitres
+per quarter
+- Q2 has production of 34 MegaL lower than Q1
+- Q3 has production of 17 MegaL lower than Q1
+- Q4 has production of 72 MegaL higher than Q1
+
+Note all dummy variables compared to the dummy variable not explicitly used
+
+
+```{r}
+augment(fit_beer) %>%
+  ggplot(aes(x = Quarter)) +
+  geom_line(aes(y = Beer, color = "Data")) +
+  geom_line(aes(y = .fitted, color = "Fitted")) +
+  scale_color_manual(
+    values = c(Data = "black", Fitted = "#D55E00")
+  ) +
+  labs(y = "Megalitres",
+       title = "Australian Quarterly Beer Production") +
+  guides(color = guide_legend(title = "Series"))
+```
+
+```{r}
+augment(fit_beer) %>%
+  ggplot(aes(x = Beer, y = .fitted,
+             color = factor(quarter(Quarter)))) +
+  geom_point() +
+  labs(y = 'Fitted', x = "Actual values",
+  title = "Australian Quarterly Beer Production") +
+  geom_abline(intercept = 0, slope = 1) +
+  guides(color = guide_legend(title = 'Quarter'))
+```
+
+
+### Intervention Variables
+
+Events that affect the variable being forecast are called interventions (e.g.
+competitor activity, advertising expenditure, etc.).
+
+If the effect only last for one period, we use a "spike" variable. This is 
+equivalent to using a dummy variable for handling an outlier.
+
+
+### Trading Days
+
+The number of trading days per month can vary and have a substantial effect
+on sales data. This can also be used as a predictor.
+
+
+### Distributed Lags
+
+If the effect of an event can last after the event takes place (like the 
+effect of an advertising campaign), lagged values of the event must be included.
+
+
+### Easter
+
+Easter differes from most holidays in that it is not held on the same day each 
+year and its effect can last for several days.
+
+
+### Fourier Series
+
+A series of sine and cosine terms at the right frequencies can approximate any 
+periodic function. Fourier terms  often need fewer predictor than dummy variables,
+which makes them useful with large variable sets like weekly data where 
+$m \approx 52$. Less useful for smaller sets like days of the week.
+
+Fourier terms are produced using the `fourier()` function
+
+__Example__
+```{r}
+fourier_beer <- recent_production %>%
+  model(TSLM(Beer ~ trend() + fourier(K = 2)))
+
+report(fourier_beer)
+```
+
+The K argument to `fourier()` specifies how many pairs of sin and cos timers to 
+include. Max allowed is $K = m/2$ where $m$ is the seasonal period.
+
+A regression model containing Fourier terms is often called a __harmonic__ 
+regression because the successive Fourier terms represent harmonics of the 
+first two.
+
+***
+
+
+## 7.5 Selecting Predictors 
+
+ Things not to do:
+ 
+- Do not plot the forecast variable against every variable and drop predictors
+  that have no visible relationship. Not all relationships are easily seen by 
+  the human eye in a scatter plot.
+- Do not create a multiple linear regression with all variables and drop the ones
+  with the lowest *p*-value. Statistical significance does not equal predictive
+  power.
+  
+Instead, here are 5 measures found in the `glance()` function:
+
+```{r}
+glance(fit_consMR) %>%
+  select(adj_r_squared, CV, AIC, AICc, BIC)
+```
+
+These values are then compared with values from other models. for Adj $R^2$, we
+want the highest values. The rest, we wante the lowest.
+
+
+### Adjusted $R^2$ (or $\bar{R}^2$)
+
+Maximizing $\bar{R}^2$ works well as a method of selecting predictors. It is 
+equivalent to minimising the standard error of a given equation.
+
+
+### Cross-validation
+
+The procedure uses the following steps:
+
+1. Remove observation $t$ from the data set, and fit the model using remaining data.
+Then compute the error. 
+2. Repeat step one for all observations
+3. Compute MSE from all error terms
+
+
+### Akaike's Information Criterion
+
+This idea penalizes the fit of the model (SSE) with the number of params that need 
+to be estimated.
+
+
+### Corrected Akaike's Information Criterion
+
+For a small set of observations, AIC selects too many predictors. $AIC_c$ is 
+bias corrected for small data sets.
+
+
+### Schwarz's Bayesian Information Criterion
+
+BIC penalizes the number of params more heavily than AIC.
+
+
+### Which measure to use?
+
+Depends.... Everyone seems to have a preference.
+
+
+### Stepwise Regression
+
+If a large number of predictors, it's impossible to fit all models. Besides PCA,
+another strategy to limit the number of models explored is __backward stepwise regression__
+
+1. Start with the model containing all potential predictors
+2. Remove one predictor at a time. Keep the model if it improves the measure of 
+predictive accuracy
+3. Iterate until no further improvement
+
+If the number of potential predictors is too large for the above, employ
+__forward stepwise regression__, where you start with a model that only includes 
+the intercept and predictors are added one at a time keeping the ones that improve
+the predictive accuracy.
+
+The stepwise approach is not guaranteed to attain the best model, but it will 
+likely lead to a good model.
+
+
+### Beware of Inference After Selecting Predictors
+
+The methods above are only useful when selecting a model for forecasting. They
+are not helpful when looking to study the effect of a predictor. If looking at the 
+statistical significance of predictors, any procedure that selects predictors first 
+will invalidate the assumptions behind p-values.
+
+***
+
+
+## 7.6 Forecasting with Regression
+
+### Ex-ante vs Ex-post Forecast
+
+__Ex-ante__
+Forecasts made using only the information that is available in advance. In order
+to generate an ex-ante forecast, the model requires forecasts of the predictors.
+Typically using a simple method from 5.2 or a pure time series approach from 
+chapters 8 or 9
+
+__Ex-post__
+Forecasts made using later information on the predictors. Not genuine forecasts,
+but useful for studying the behavior of forecasting models. They should not assume
+any knowledge of the $y$ variable to be forecast.
+
+
+__Example__
+Normally you cannot know future values in advance, but in the below, the trend
+and season are the only predictors and thus the future values can be used in advance.
+```{r}
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+fit_beer <- recent_production %>%
+  model(TSLM(Beer ~ trend() + season()))
+fc_beer <- forecast(fit_beer)
+fc_beer %>%
+  autoplot(recent_production) +
+  labs(
+    title = "Forecasts of beer production using regression",
+    y = "megalitres"
+  )
+```
+
+
+### Scenario Based Forecasting 
+
+Here, the forecaster assumes possible scenarios for the predictor variables.
+
+For example, a US policy maker may be interested in comparing the predicted 
+change in consumption when there is a constant growth of 1% and 0.5% respectively 
+for income and savings with no change in the employment rate, versus a respective
+decline of 1% and 0.5%
+ 
+```{r}
+fit.consBest <- us_change %>%
+  model(
+    lm = TSLM(Consumption ~ Income + Savings + Unemployment)
+  )
+
+future_scenarios <- scenarios(
+  Increase = new_data(us_change, 4) %>%
+    mutate(Income=1, Savings = 0.5, Unemployment=0),
+  Decrease = new_data(us_change, 4) %>%
+    mutate(Income= -1, Savings= -.05, Unemployment=0),
+  names_to = "Scenario")
+  
+fc <- forecast(fit.consBest, new_data = future_scenarios)
+
+us_change %>%
+  autoplot(Consumption) +
+  autolayer(fc) +
+  labs(title = 'US Consumption', y="% Change")
+
+
+```
+
+### Building a Predictive Regression Model
+
+Regression models are great for capturing important relationships between the 
+forecast variable and predictors, and are great for scenario-based forecasting. 
+A challenge is that in order to generate ex-ante forecasts, the model requires future 
+values of each predictor.
+
+An alternative way is to use lagged predictors.
+
+
+***
+
+## 7.7 Nonlinear Regression
+
+Easiest way to model a non-linear relationship is transform the forecast variable
+and/or the predictor variable before estimating a regression. This provides a
+non-linear functional form that is still linear in parameters.
+
+__log-log__: the natural log is taken of both x and y
+__log-linear__: log of only x
+__linear-log__: log of only y
+
+__Tip__: for a log transform, all variables must be > 0. If $x$ contains zeros,
+use $log(x+1)$. This method has a neat side-effect that zeros in $x$ will still
+be zeros in the transformed scale.
+
+
+### Forecasting with a Nonlinear Trend
+
+__piecewise linear__: introducing points where the slope of $f$ (of $f(x)$) can change.
+These points are called __knots__
+
+
+__Example__
+Boston Marathon winning times
+
+```{r}
+boston_men <- boston_marathon %>%
+  filter(Year >= 1924) %>%
+  filter(Event == "Men's open division") %>%
+  mutate(Minutes = as.numeric(Time)/60)
+```
+
+```{r}
+fit_trends <- boston_men %>%
+  model(linear = TSLM(Minutes ~ trend()),
+        exponential = TSLM(log(Minutes) ~ trend()),
+        piecewise = TSLM(Minutes ~ trend(knots = c(1950, 1980)))
+        )
+
+fc_trends <- fit_trends %>% forecast(h = 10)
+
+boston_men %>%
+  autoplot(Minutes) +
+  geom_line(data = fitted(fit_trends),
+            aes(y = .fitted, colour = .model)) +
+  autolayer(fc_trends, alpha = 0.5, level = 95) +
+  labs(y = 'Minutes',
+       title = 'Boston Maraton Winning Times')
+  
+```
+
+Above, the piecewise method shows its strength. 
+
+***
+
+
+## 7.8 Correlation, Causation and Forecasting
+
+Correlation is not causation.
+
+__confounder__: a variable not included in the forecasting model that influences 
+$y$ and at least one $x$ variable. 
+
+
+### Forecasting with Correlated Predictors
+
+Not exactly a problem unless the correlation coefficient is approaching +1 or -1
+
+
+### Multicollinearlity and Forecasting
+
+This happens when two predictors are highly correlated as mentioned above. It is 
+best to drop one of these predictors.

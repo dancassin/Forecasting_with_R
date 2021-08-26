@@ -19,5 +19,8 @@ https://otexts.com/fpp3
 
 ***
 
+# Optimal Model Workflow
+
 A distillation of Time Series Methods with automated model choosing powered by statisical optimization:
+
 [Time Series Workflow](https://github.com/dancassin/Forecasting_with_R/blob/main/Time%20Series%20Work%20Flow.Rmd)

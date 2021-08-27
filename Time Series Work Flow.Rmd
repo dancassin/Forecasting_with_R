@@ -12,24 +12,34 @@ library(gridExtra)
 library(fpp3)
 ```
 
-# Load Data Set
+## Load Data Set
 
 A single time series is required for this notebook, and should be saved to "data".
-The column you are interested in should be formatted as a string and pointing to "column".
+The name of the column column you are interested in should be formatted as a 
+string and pointing to "column".
+
 
 ```{r}
 # Choose a time series 
 # Specify the column you would like to work with
 
-data <- aus_production %>%
-  select(Quarter, Beer)
+# data <- us_employment %>%
+#   filter(Title == "Leisure and Hospitality",
+#          year(Month) > 2000) %>%
+#   mutate(Employed = Employed/1000) %>%
+#   select(Month, Employed)
 
-column <- 'Beer'
+data <- PBS %>%
+  filter(ATC2 == "A10") %>%
+  select(Month, Scripts, Cost) %>%
+  summarize(Total_Cost = sum(Cost), Total_Scripts = sum(Scripts))
+
+column <- 'Total_Scripts'
 
 data
 ```
 
-# Split Data into Train Test
+## Split Data into Train Test
 
 In order to statistically test the accuracy of different models, an 80/20 train/test
 split is employed. It is required to know the frequency of the observations.
@@ -66,27 +76,34 @@ train_test_split <- function(dataframe, timeperiod) {
   return(list(train, test))
 }
 
-train_test <- train_test_split(data, 'quarterly')
+train_test <- train_test_split(data, 'monthly')
 
 train <- train_test[[1]]
 test <- train_test[[2]]
 ```
 
 
-# Visualize Data
+## Visualize Data
 
 One of the first steps of any time series project is to visualize your data so
 that you may plan your course of action.
 
 ```{r}
-train %>%
-  autoplot(Beer)
+visualize_timeseries <- function(data, column){
+  col_name <- as.name(column)
+  
+  data %>%
+    autoplot(!!col_name)
+
+} 
+
+visualize_timeseries(train, column)
 ```
 
-# Time Series Stats
+## Time Series Stats
 
-The stats returned will guide in the understading of the time series and in
-future processes.
+The stats returned will guide in understanding the time series and in
+determining future processes.
 
 ```{r}
 ts_stats <- function(single_timeseries, column) {
@@ -123,7 +140,7 @@ ts_stats <- function(single_timeseries, column) {
     print('Data is differentiated from white noise')
   }
   else
-    print('Data is white noise')
+    print('Data is not differentiated from white noise')
   
   if(ts_features$coef_hurst > .75) {
     print('Hurst coefficient states: Time series has long memory and thus significant autocorrelations for many lags')
@@ -146,17 +163,23 @@ train_stats
 ```
 
 
-# Consider Transformations
+## Consider Transformations
   
-  * Calendar Adjustments
+  * Calendar Adjustments 
+      * Trends or seasonality may not be immediately noticeable in the initial
+      time period. 
+      * Holidays and weekends impact stock market data.
   * Population Adjustments
+      * Geographic density changes over time. Per capita adjustments are typically 
+      more truthful.
   * Inflation Adjustments
+      * The value/buying power of currency changes over time
   * Mathematical Transformations:
       * Box Cox transform uses the optimal lambda via the Guerrero method from the
       stats tibble above. Method is helpful when the variance of the time series is 
       consistently increasing over time.
 
-### Comparison of Original to Transform Using Lambda
+#### Comparison of Original to Transform Using Lambda
 ```{r}
 
 transform_comparison <- function(dataframe, column, stats_df, append = FALSE){
@@ -181,23 +204,34 @@ transform_comparison <- function(dataframe, column, stats_df, append = FALSE){
   if(append == TRUE) {
     return(dataframe['transform'])
   }
-
-  
 }
 
-
+# Un-comment if using transformed version
+# data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
+# test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
 
 train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
 ```
 
 
-# Discovering Seasonality
+#### If Box Cox Transform Acceptable...
 
-For data with seasonality, the below produces a plot to view 
+Un-comment below code to henceforth the transformed data to the "column" variable.
+```{r}
+# column <- 'transform'
+```
+
+
+
+## Discovering Seasonality
+
+For data with seasonality, the below produces a plot to help uncover seasonal changes    
 ```{r fig.align="center", echo = FALSE,fig.width = 14}
 seasonal_plots <- function(dataframe, column, time_period, line_labels = NULL) {
-  # time_period for gg_season takes 'day', 'week', 'month','year', and NULL
-  # if you prefer it to choose for you
+  # time_period for gg_season takes 'day', 'week', 'month','year', and NULL if
+  # you prefer the function to choose for you. This time period is the comparitive
+  # scope, so it is one metric bigger than an observation. Example: if the data is
+  # hourly, choose day; if monthly choose year.Quarter is not an option.
   
   col_name <- as.name(column)
 
@@ -224,7 +258,9 @@ seasonal_plots <- function(dataframe, column, time_period, line_labels = NULL) {
 seasonal_plots(train, column, time_period = 'year', line_labels = 'both')
 ```
 
-# Decomposition
+## Decomposition
+
+Splitting a time series into trend, seasonality, and remainder for further inspection.
 ```{r}
 decomp <- function(data, column){
   col_name <- as.name(column)
@@ -241,7 +277,7 @@ decomp(train, column)
 
 
 
-# Establish Benchmark Models
+## Establish Benchmark Models
 
 This section determines the models to use based on the train_stats dataframe and 
 fits benchmark models to test the more complicated models against.
@@ -292,16 +328,18 @@ benchmark_models <- function(dataframe, column, df_stats) {
   return(df_fit)
 }
 
-train_fit <- benchmark_models(train, column, train_stats)
+benchmark_fit <- benchmark_models(train, column, train_stats)
 
-train_fit
+benchmark_fit
 ```
 
-# Plot Benchmark Models
+#### Plot Benchmark Models and Get Accuracy Scores
 
 ```{r}
-plot_benchmark_models <- function(dataframe, test_set, df_fit, zoom_pct = 0.0){
-  # zoom pct takes range from 0.0 - 0.8 
+plot_benchmark_models <- function(dataframe, column, test_set, df_fit, zoom_pct = 0.0){
+  # zoom pct takes range from 0.0 - 0.8
+  col_name <- as.name(column)
+  
   test_set_length <- dim(test_set)[1]
   
   data_length <- dim(dataframe)[1]
@@ -310,25 +348,35 @@ plot_benchmark_models <- function(dataframe, test_set, df_fit, zoom_pct = 0.0){
   
   
   fc <- df_fit %>% forecast(h=test_set_length)
-
-  fc %>%
+  
+  benchmark_accuracy <- accuracy(fc, test_set)
+  
+  benchmark_plot <- fc %>%
     autoplot(truncated_range, level = NULL) +
     labs(title = "Benchmark Models") +
-    autolayer(test_set)
+    autolayer(test_set, .vars=!!col_name)
 
-  
+  return(list(benchmark_accuracy, benchmark_plot))
 }
 
-plot_benchmark_models(data, test, train_fit, zoom_pct = .5)
+benchmark_results <- plot_benchmark_models(data, column, test, benchmark_fit, zoom_pct = .5)
+
+benchmark_accuracy <- benchmark_results[[1]]
+
+benchmark_accuracy
+
+benchmark_results
 ```
-# Plot Best Benchmark Model's Residuals
+
+
+#### Plot Best Benchmark Model's Residuals
+
+Function uses MAPE to sort the dataframe and return best performing benchmark.
 ```{r}
-plot_best_benchmark_residuals <- function(fitted_models, dataframe, column) {
+plot_best_benchmark_residuals <- function(model_accuracy, dataframe, column) {
   col_name <- as.name(column)
   
-  benchmark_data <- augment(fitted_models) %>%
-    features(.innov, ljung_box, lag = 10) %>%
-    arrange(lb_stat)
+  benchmark_data <- model_accuracy %>% arrange(MAPE)
   
   print(benchmark_data[1,])
   
@@ -355,16 +403,121 @@ plot_best_benchmark_residuals <- function(fitted_models, dataframe, column) {
   
 }
 
-plot_best_benchmark_residuals(train_fit, data, column)
+plot_best_benchmark_residuals(benchmark_accuracy, data, column)
+```
+
+## Testing More Advanced Models
+
+#### Linear Model Based on Trend and/or Seasonality
+
+```{r}
+fit_trend_seasonal_lm <- function(train_set, column, train_stats, test_set) {
+  col_name <- as.name(column)
+  
+  test_set_length <- dim(test_set)[1]
+  
+  if (train_stats$trend_strength > .75 & train_stats$nsdiffs > 0) {
+    fit_data <- train_set %>%
+      model(TSLM((!!col_name) ~ trend() + season()))
+  } else if (train_stats$trend_strength < .75 & train_stats$nsdiffs > 0) {
+    fit_data <- train_set %>%
+      model(TSLM((!!col_name) ~ season()))
+  } else if (train_stats$trend_strength > .75 & train_stats$nsdiffs < 1) {
+    fit_data <- train_set %>%
+      model(TSLM((!!col_name) ~ trend()))
+  }else{print("No trend or seasonality to predict")}
+  
+  report(fit_data)
+  
+  fc <- fit_data %>% forecast(h=test_set_length)
+  
+  print(accuracy(fc, test_set))
+  
+  fc_chart <- fc %>%
+    autoplot(train_set, level = NULL) +
+    labs(title = "Linear Model Forecast on Test Set") +
+    autolayer(test_set, .vars=!!col_name)
+  
+  #residual_chart <- fit_data %>% gg_tsresiduals()
+  
+  return(list(fit_data, fc_chart))
+} 
+
+
+lm_output <- fit_trend_seasonal_lm(train, column, train_stats, test)
+
+lm_output[[2]]
+
+lm_fit <- lm_output[[1]]
+
+augment(lm_fit) %>%
+  features(.innov, ljung_box, lag = 10)
+
+gg_tsresiduals(lm_fit)
+
+```
+
+#### ETS Model
+```{r}
+ets_model <- function(train_set, column, test_set) {
+  col_name <- as.name(column)
+  
+  ets_fit <- train_set %>%
+    model(ETS(!!col_name))
+
+  ets_report <- report(ets_fit)
+  
+  ets_fc <- ets_fit %>%
+    forecast(h=dim(test_set)[1])
+  
+  fc_accuracy <- accuracy(ets_fc, test_set)
+  
+  ets_plot <- ets_fc %>%
+    autoplot(train_set, level = NULL) +
+    labs(title = "ETS Model") +
+    autolayer(test, .vars=!!col_name)
+
+  return(list(ets_fit, ets_report, fc_accuracy, ets_plot))  
+}
+
+ets_output <- ets_model(train, column, test)
+
+ets_fit <- ets_output[[1]]
+ets_report <- ets_output[[2]]
+ets_accuracy <- ets_output[[3]]
+
+ets_fit
+ets_report
+ets_accuracy
+ets_output[[4]]
 ```
 
 
 
+```{r}
+get_residuals <- function(model_fit){
+  lb_result <- augment(model_fit) %>%
+    features(.innov, ljung_box, lag = 10)
+  
+  print(lb_result)
+  
+  if (lb_result$lb_pvalue < 0.05) {
+    print('Series is differentiated from white noise.')
+  } else {
+    print('Series is not differentiated from white noise.')
+  }
+  gg_tsresiduals(ets_fit)
+  
+  # return(lb_result)
+}
+
+get_residuals(ets_fit)
+```
 
 
+#### ARIMA Models
 
-
-# Autocorrelation and Partial Autocorrelation
+__Autocorrelation and Partial Autocorrelation__
 ```{r}
 acf_pacf <- function(dataframe, column) {
   col_name <- as.name(column)
@@ -381,7 +534,38 @@ acf_pacf <- function(dataframe, column) {
   
   grid.arrange(p1, p2, nrow = 2)
 }
-
-acf_pacf(train, column)
 ```
+
+```{r}
+col_name <- as.name(column)
+
+arima_fit <- train %>%
+  model(auto = ARIMA(!!col_name, stepwise=FALSE, approx=FALSE))
+```
+
+```{r}
+arima_fc <- arima_fit %>%
+    forecast(h=dim(test)[1])
+  
+accuracy(arima_fc, test)
+
+arima_fc %>%
+  autoplot(train, level = NULL) +
+  labs(title = "ARIMA Model") +
+  autolayer(test, .vars=!!col_name)
+
+
+```
+
+```{r}
+report(arima_fit)
+
+augment(arima_fit) %>%
+    features(.innov, ljung_box, lag = 10)
+
+gg_tsresiduals(arima_fit)
+```
+
+
+
 

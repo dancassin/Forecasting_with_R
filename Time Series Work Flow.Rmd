@@ -31,13 +31,14 @@ string and pointing to "column".
 
 data <- PBS %>%
   filter(ATC2 == "A10") %>%
-  select(Month, Scripts, Cost) %>%
-  summarize(Total_Cost = sum(Cost), Total_Scripts = sum(Scripts))
+  select(Month, Scripts) %>%
+  summarize(Total_Scripts = sum(Scripts))
 
 column <- 'Total_Scripts'
 
 data
 ```
+
 
 ## Split Data into Train Test
 
@@ -81,6 +82,7 @@ train_test <- train_test_split(data, 'monthly')
 train <- train_test[[1]]
 test <- train_test[[2]]
 ```
+
 
 
 ## Visualize Data
@@ -207,8 +209,8 @@ transform_comparison <- function(dataframe, column, stats_df, append = FALSE){
 }
 
 # Un-comment if using transformed version
-# data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
-# test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
+data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
+test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
 
 train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
 ```
@@ -218,7 +220,7 @@ train['transform'] <- transform_comparison(train, column, train_stats, append = 
 
 Un-comment below code to henceforth the transformed data to the "column" variable.
 ```{r}
-# column <- 'transform'
+column <- 'transform'
 ```
 
 
@@ -431,7 +433,7 @@ fit_trend_seasonal_lm <- function(train_set, column, train_stats, test_set) {
   
   fc <- fit_data %>% forecast(h=test_set_length)
   
-  print(accuracy(fc, test_set))
+  lm_accuracy <- (accuracy(fc, test_set))
   
   fc_chart <- fc %>%
     autoplot(train_set, level = NULL) +
@@ -440,20 +442,20 @@ fit_trend_seasonal_lm <- function(train_set, column, train_stats, test_set) {
   
   #residual_chart <- fit_data %>% gg_tsresiduals()
   
-  return(list(fit_data, fc_chart))
+  return(list(fit_data, lm_accuracy, fc_chart))
 } 
 
 
 lm_output <- fit_trend_seasonal_lm(train, column, train_stats, test)
 
-lm_output[[2]]
+lm_output[[3]]
+
+lm_accuracy <- lm_output[[2]]
+lm_accuracy
 
 lm_fit <- lm_output[[1]]
 
-augment(lm_fit) %>%
-  features(.innov, ljung_box, lag = 10)
-
-gg_tsresiduals(lm_fit)
+get_residuals(lm_fit)
 
 ```
 
@@ -519,15 +521,15 @@ get_residuals(ets_fit)
 
 __Autocorrelation and Partial Autocorrelation__
 ```{r}
-acf_pacf <- function(dataframe, column) {
+acf_pacf <- function(train_set, column) {
   col_name <- as.name(column)
   
-  p1 <- dataframe %>%
+  p1 <- train_set %>%
     ACF({{col_name}}, lag_max=48) %>%
     autoplot() +
     labs(y = 'ACF')
   
-  p2 <- dataframe %>%
+  p2 <- train_set %>%
     PACF({{col_name}}, lag_max=48) %>%
     autoplot() +
     labs(y = 'PACF')
@@ -537,35 +539,49 @@ acf_pacf <- function(dataframe, column) {
 ```
 
 ```{r}
-col_name <- as.name(column)
 
-arima_fit <- train %>%
-  model(auto = ARIMA(!!col_name, stepwise=FALSE, approx=FALSE))
-```
-
-```{r}
-arima_fc <- arima_fit %>%
-    forecast(h=dim(test)[1])
+arima_model <- function(train_set, column, test_set) {
+  col_name <- as.name(column)
   
-accuracy(arima_fc, test)
+  arima_fit <- train %>%
+    model(`ARIMA` = ARIMA(!!col_name, stepwise=FALSE, approx=FALSE))
 
-arima_fc %>%
-  autoplot(train, level = NULL) +
-  labs(title = "ARIMA Model") +
-  autolayer(test, .vars=!!col_name)
+  arima_report <- report(arima_fit)
+  
+  arima_fc <- arima_fit %>%
+    forecast(h=dim(test_set)[1])
+  
+  arima_accuracy <- accuracy(arima_fc, test_set)
+  
+  arima_plot <- arima_fc %>%
+    autoplot(train_set, level = NULL) +
+    labs(title = "ARIMA Model") +
+    autolayer(test, .vars=!!col_name)
 
+  return(list(arima_fit, arima_accuracy, arima_plot))  
+}
 
+arima_output <- arima_model(train, column, test)
+
+arima_accuracy <- arima_output[[2]]
+
+arima_output
 ```
+
+
 
 ```{r}
-report(arima_fit)
-
-augment(arima_fit) %>%
-    features(.innov, ljung_box, lag = 10)
-
-gg_tsresiduals(arima_fit)
+get_residuals(arima_fit)
 ```
 
-
+## Assess Model Forecast Performance
+```{r}
+bind_rows(
+  benchmark_accuracy, 
+  lm_accuracy,
+  ets_accuracy,
+  arima_accuracy) %>%
+  arrange(MAPE)
+```
 
 

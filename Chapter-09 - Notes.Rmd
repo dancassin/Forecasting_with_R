@@ -1,5 +1,5 @@
 ---
-title: "Ch 8 Notes"
+title: "Chapter 9: ARIMA Models"
 output: html_document
 ---
 
@@ -9,216 +9,208 @@ knitr::opts_chunk$set(echo = TRUE)
 library(fpp3)
 ```
 
-# Chapter 8: Exponential Smoothing
 
-__Basic Concept__: Exponential smoothing is a model that weights the averages of
-past observations where the weights decay exponentially as observations get older.
-In short - newer observations mean more.
+__Basic Concept__: ARIMA models aim to describe the autocorrelations in the data
 
 
-## 8.1 Simple Exponential Smoothing (SES)
+## 9.1 Stationarity and Differencing
 
-__SES__: suitable for forecasting data with no clear trend or seasonal pattern
+__Stationarity__: a time series is considered stationary when its statistical
+properties do not depend on the time at which it is observed. So, any timeseries
+with seasonality or trend is not stationary. White noise is stationary.
+
+__Differencing__: computing the differences between consecutive observations. Helps
+stabilize the mean of the series. An ACF plot is useful for identifying a non-stationary
+time series, but ndiffs() and nsdiffs() (for seasonal differencing) works too.
+
+__Second Order Differencing__: if a series is not stationary after 1 difference,
+it may need a second difference.
+
+__Seasonal Differencing__: difference between an obsermation and the previous 
+observation of the same season. Also termed "lag _m_ differences" where m is the 
+seasonal period.
+
+__Example__
+```{r, fig.height=9, fig.width=8}
+PBS %>%
+  filter(ATC2 == "H02") %>%
+  summarise(Cost = sum(Cost)/1e6) %>%
+  transmute(
+    `Sales ($million)` = Cost,
+    `Log sales` = log(Cost),
+    `Annual change in log sales` = difference(log(Cost), 12),
+    `Doubly differenced log sales` =
+                     difference(difference(log(Cost), 12), 1)
+  ) %>%
+  pivot_longer(-Month, names_to="Type", values_to="Sales") %>%
+  mutate(
+    Type = factor(Type, levels = c(
+      "Sales ($million)",
+      "Log sales",
+      "Annual change in log sales",
+      "Doubly differenced log sales"))
+  ) %>%
+  ggplot(aes(x = Month, y = Sales)) +
+  geom_line() +
+  facet_grid(vars(Type), scales = "free_y") +
+  labs(title = "Corticosteroid drug sales", y = NULL)
+```
+
+  1. Selecting which differences to apply is subjective
+  2. If both seasonal and non-seasonal differencing is suggested, if the seasonal
+  strength is high, perform seasonal first.
+  3. Applying more differences than needed will introduce false dynamics. Perform
+  as few as necessary.
+
+### Unit Root Tests
+
+The objective way to determine if differencing is required. They can be performed
+with `unitroot_kpss` or `unitroot_ndiffs` or `unitroot_nsdiffs` in the `features()` 
+function. To perform all of them use `features(Your_Data_Here, feature_set(pkgs = "feasts"))`
+
+***
+
+
+## 9.3 Autoregressive Models
+
+Forecasting the variable of interest using a linear combination of past values 
+of the variable.
+
+__autoregression__: a regression of the variable against itself
+
+
+AR models are restricted to stationary data
+
+***
+
+
+## 9.4 Moving Average Models
+
+Instead of using previous values of the variable in a regression, a MA model
+uses past forecast errors in a regression-like model.
+
+Each observation of the data can be thought of as the weighted moving average of
+the past few forecast errors.
+
+Not to be confused with moving average smoothing from previous chapters. MA models
+forecast future values while MA smoothing is for estimating trends of past values.
+
+***
+
+
+## 9.5 Non-Seasonal ARIMA Models
+
+ARIMA combines autoregression, differencing, and moving average models. It stands 
+for AutoRegressive Integrated Moving Average. This combination gives the ability to 
+model the lagged values and lagged errors as well as make the series stationary.
+
+ARIMA(p,d,q)
+
+  * p: order of the autoregression
+  * d: degree of differencing
+  * q: order of moving average
+  
+`ARIMA()` from the `fable` package can select these parameters for you.
 
 __Example__
 ```{r}
-algeria_economy <- global_economy %>%
-  filter(Country == "Algeria")
-algeria_economy %>%
+global_economy %>%
+  filter(Code == "EGY") %>%
   autoplot(Exports) +
-  labs(y = "% of GDP", title = "Exports: Algeria")
+  labs(y = "% of GDP", title = "Egyptian Exports")
 ```
 ```{r}
-# Estimate parameters
-fit <- algeria_economy %>%
-  model(ETS(Exports ~ error("A") + trend("N") + season("N")))
-fc <- fit %>%
-  forecast(h = 5)
-```
-
-The A's and N's above stand for Additive and NULL, respectively, as this is a 
-forecast for a series with no trend or seasonality.
-
-```{r}
-fc %>%
-  autoplot(algeria_economy) +
-  geom_line(aes(y = .fitted), col="#D55E00",
-            data = augment(fit)) +
-  labs(y="% of GDP", title="Exports: Algeria") +
-  guides(colour = "none")
-```
-
-Graph shows forecast and one-step-ahead fitted values (orange).
-
-Large prediction interval shows large uncertainty; using the mean value alone 
-would be misleading.
-
-***
-
-
-## 8.2 Methods with Trend
-
-__Holt's Linear Trend__: allowed SES to forecast trending data.
-
-
-__Example__
-```{r}
-aus_economy <- global_economy %>%
-  filter(Code == "AUS") %>%
-  mutate(Pop = Population / 1e6)
-autoplot(aus_economy, Pop) +
-  labs(y = "Millions", title = "Australian population")
-```
-
-Holt's linear trend method is employed by making the `trend()` argument Additive.
-Smoothing params for the level, trend, and first fitted values are estimated by 
-minimizing SSE.
-
-
-__Damped Trend Method__: Holt's trend tends to over forecast, especially with
-forecasts far into the future. Dampening introduces a param that flattens to 
-horizontal as the forecast continues. 
-
-`phi` ($\phi$) is an argument for the dampening amount. At 1, it is the same as using a 
-non-dampening method. Usually restricted to values between 0.8 and 9.8.
-
-```{r}
-aus_economy %>%
-  model(
-    `Holt's method` = ETS(Pop ~ error("A") +
-                       trend("A") + season("N")),
-    `Damped Holt's method` = ETS(Pop ~ error("A") +
-                       trend("Ad", phi = 0.95) + season("N"))
-  ) %>%
-  forecast(h = 15) %>%
-  autoplot(aus_economy, level = NULL) +
-  labs(title = "Australian population",
-       y = "Millions") +
-  guides(colour = guide_legend(title = "Forecast"))
-```
-
-
-***
-
-## 8.3 Methods with Seasonality
-
-__Holt-Winter's Method__: contains three smoothing equations (level,
-trend, seasonal) each with a smoothing param ($\alpha$, $\beta$, $\gamma$), and 
-_m_ to denote the seasonal freq. 
-
-   * Additive Method: preferred when seasonal variations are constant
-   
-      - Expressed in absolute terms in scale of series
-      - series is seasonally adjusted by subtracting the seasonal component
-      - Seasonal component adds up to ~0 within 1 year span
-      
-   * Multiplicative Method: preferred when seasonal variations change proportional
-   to the level of the series
-   
-      - Expressed in percentages
-      - Seasonally adjusted by dividing by the seasonal component
-      - Seasonal component adds up to _m_ within 1 year span
-
-__Example__
-```{r}
-aus_holidays <- tourism %>%
-  filter(Purpose == "Holiday") %>%
-  summarise(Trips = sum(Trips)/1e3)
-fit <- aus_holidays %>%
-  model(
-    additive = ETS(Trips ~ error("A") + trend("A") +
-                                                season("A")),
-    multiplicative = ETS(Trips ~ error("M") + trend("A") +
-                                                season("M"))
-  )
-fc <- fit %>% forecast(h = "3 years")
-fc %>%
-  autoplot(aus_holidays, level = NULL) +
-  labs(title="Australian domestic tourism",
-       y="Overnight trips (millions)") +
-  guides(colour = guide_legend(title = "Forecast"))
-```
-
-__Holt Winter's Damped__: can be used with additive and multiplicative methods,
-but multiplicative typically provides accurate forecasts for seasonal data
-
-__Example__
-Multiplicative model with damped trend "Ad" on daily data with _m_=7.
-```{r}
-sth_cross_ped <- pedestrian %>%
-  filter(Date >= "2016-07-01",
-         Sensor == "Southern Cross Station") %>%
-  index_by(Date) %>%
-  summarise(Count = sum(Count)/1000)
-sth_cross_ped %>%
-  filter(Date <= "2016-07-31") %>%
-  model(
-    hw = ETS(Count ~ error("M") + trend("Ad") + season("M"))
-  ) %>%
-  forecast(h = "2 weeks") %>%
-  autoplot(sth_cross_ped %>% filter(Date <= "2016-08-14")) +
-  labs(title = "Daily traffic: Southern Cross",
-       y="Pedestrians ('000)")
-```
-
-Model has identified weekly seasonal pattern and increasing trend 
-
-
-***
-
-
-## 8.4 A Taxonomy of Exponential Smoothing Methods
-
-There are a lot of combinations of smoothing methods. 
-
-
-***
-
-
-## 8.5 Innovations of State Space Models for Exponential Smoothing
-
-__state space model__: consists of a measurement equation that describes the
-observed data and some state equations that describe how the unobserved states
-(level, trend, season) change over time.
-
-This statistical models in this section generate forecast intervals via a stochastic
-data generation process.
-
-Honestly, all of these models would be figure out automatically with R minimizing
-AICc.
-
-***
-
-
-## 8.6 Model Selection
-
-R automatically uses AICc to choose the best model when using `ETS()`
-
-```{r}
-aus_holidays <- tourism %>%
-  filter(Purpose == "Holiday") %>%
-  summarise(Trips = sum(Trips)/1e3)
-fit <- aus_holidays %>%
-  model(ETS(Trips))
+fit <- global_economy %>%
+  filter(Code == "EGY") %>%
+  model(ARIMA(Exports))
 report(fit)
+
 ```
-`report()` outputs both the $\alpha$ and $\gamma$ as well as the estimates for the 
-initial states of the params. Small $\gamma$ values indicates seasonal components 
-change very little over time.
+
+```{r}
+fit %>% forecast(h=10) %>%
+  autoplot(global_economy) +
+  labs(y = "% of GDP", title = "Egyptian Exports")
+```
+
+Above we see an ARIMA model of (2,0,1) captured the cyclic pattern over decades.
+
+
+### ACF and PACF plots
+
+In order to manually determine p,d,q starting points, employ ACF plots (for q) and 
+PACF plots (for p), and then determining based on significant lags (above the blue line).
+
+__ACF__ measures the relationship between $y_t$ and $y_{t-k}$ (lagged values)
+__PACF__ measures the relationship between $y_t$ and $y_{t-k}$ after remove the 
+effects of the lags in between. 
+
+__Example__
+
+```{r}
+global_economy %>%
+  filter(Code == "EGY") %>%
+  gg_tsdisplay(Exports, plot_type = 'partial')
+```
+
+If you're going by significant lags, a (4,0,9) model may look like the 
+recommendation here (last significant lag @ 4 w/ PACF and 9 with ACF), but keep 
+this in mind:
+
+ARIMA(p,d,0) may be warranted if:
+
+  * ACF is exponentially decaying or sinusoidal
+  * significant spike at lag _p_ in the PACF, but none beyond
+
+ARIMA(0,d,q) may be warranted if:
+
+  * PACF is exponentially decaying or sinusoidal
+  * significant spike at lag _q_ in the ACF, but none beyond
+
+Above we see a decaying sinusoidal in the ACF and the PACF shows the last
+sig spike at 4. Starting with ARIMA(4,0,0) would be suggested. To select your
+own ARIMA values for `ARIMA` to search within use:
+
+`ARIMA(y ~ pdq(p=1:4, d=1, q=0:2))`
+
+The (4,0,0) model does only slightly worse than the Auto ARIMA function  
+(with an AICc value of 294.70 compared to 294.29).
+
+***
+
+
+## 9.6 Estimation and Order Selection
+
+__MLE__: Maximum Likelihood Estimation finds the values of the parameters with 
+maximize the probability of obtaining the original series.
+
+ARIMA models are much more complicated to estimate than regression models, and
+estimation can vary based on the algorithm used.
+
+`fable` will maximize the log likelihood of the data; the log of the probability of the 
+observed data coming from the model.
+
+
+__Information Criteria__
+AIC, AICc, and BIC are also used (AICc preferred by the textbook) to determine
+best orders of p and q, but due to differencing changing the data on which log
+likelihood is computed, Information Criteria cannot be compared between models
+with different d values.
+
+
+***
+
+
+## 9.7 ARIMA Modeling in `fable`
+
+#### How Does `ARIMA()` Work?
+
+
 
 ***
 
 ## 8.7 Forecasting with ETS Models
 
-Just like any other model, use `forecast()`.
-
-```{r}
-fit %>%
-  forecast(h = 8) %>%
-  autoplot(aus_holidays)+
-  labs(title="Australian domestic tourism",
-       y="Overnight trips (millions)")
-```
 
 
 ***

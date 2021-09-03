@@ -1,0 +1,66 @@
+---
+title: "Chapter 10: Dynamic Regression Models"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(fpp3)
+```
+
+
+__Basic Concept__:
+
+
+## 9.1 
+
+***
+
+
+## 9.3 Autoregressive Models
+
+
+
+***
+
+
+## 9.4 Moving Average Models
+
+
+***
+
+
+## 9.5 Non-Seasonal ARIMA Models
+
+
+***
+
+
+## 9.6 Estimation and Order Selection
+
+
+
+***
+
+
+## 9.7 ARIMA Modeling in `fable`
+
+
+***
+
+## 9.8 Forecasting
+
+
+
+
+***
+
+## 9.9 Seasonal ARIMA Models
+
+
+
+***
+
+## 9.10 ARIMA vs ETS
+

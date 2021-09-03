@@ -205,14 +205,161 @@ with different d values.
 
 #### How Does `ARIMA()` Work?
 
+  1. Differences determined by KPSS tests
+  2. Values of p and q are chosen by minimizing the AICc after differencing the data.
+  Algorithm fits four models and uses a step-wise approach minimizing AICc each step.
+
+***
+
+## 9.8 Forecasting
+
+#### Prediction Intervals
+
+It is assumed that residuals are uncorrelated and normally distributed for ARIMA
+forecasting. Forecast is unreliable if either is untrue. Always plot ACF and 
+histogram of residuals.
+
+If residuals uncorrelated but not normally distributed, obtain bootstrapped intervals
+by using `bootstrap=TRUE` in `forecast()`
+
 
 
 ***
 
-## 8.7 Forecasting with ETS Models
+## 9.9 Seasonal ARIMA Models
 
+For seasonal ARIMA models additional seasonal terms $(P,D,Q)m$ are included, where
+$m$ is the seasonal period. 
 
+#### Seasonal ARIMA Modeling Procedure
+__Example__
+Data:
+```{r}
+leisure <- us_employment %>%
+  filter(Title == "Leisure and Hospitality",
+         year(Month) > 2000) %>%
+  mutate(Employed = Employed/1000) %>%
+  select(Month, Employed)
+autoplot(leisure, Employed) +
+  labs(title = "US employment: leisure and hospitality",
+       y="Number of people (millions)")
+```
+
+Non-stationary data with clear seasonality and trend.
+
+1. Take seasonal difference. It is a yearly trend, so we take `difference(12)` below
+```{r}
+leisure %>%
+  gg_tsdisplay(difference(Employed, 12),
+               plot_type='partial', lag=36) +
+  labs(title="Seasonally differenced", y="")
+```
+
+This is also clearly non-stationary with non-normal residuals and very significant
+lags. 
+
+2. Further differencing required.
+
+```{r}
+leisure %>%
+  gg_tsdisplay(difference(Employed, 12) %>% difference(),
+               plot_type='partial', lag=36) +
+  labs(title = "Double differenced", y="")
+```
+
+3. Now with residuals centering around zero, we look to the ACF and PACF to 
+define our terms. 
+ * ACF: Significant spike at lag 2 suggests non-seasonal MA(2)
+ * ACF: Significant spike at lag 12 suggests a seasonal MA(1) component
+ 
+ This leads to a ARIMA(0,1,2)(0,1,1)12 model
+ 
+ * PACF: Significant spike at lag 2 suggests a non-seasonal AR(2)
+ * Still use the ACF to determine the seasonal component.
+ 
+ This leads to a ARIMA(2,1,0)(0,1,1)12
+ 
+ Also including the auto ARIMA function setting `stepwise=FALSE` and `approximation=FALSE`
+ to make R work extra to find the best model.
+
+```{r}
+fit <- leisure %>%
+  model(
+    arima012011 = ARIMA(Employed ~ pdq(0,1,2) + PDQ(0,1,1)),
+    arima210011 = ARIMA(Employed ~ pdq(2,1,0) + PDQ(0,1,1)),
+    auto = ARIMA(Employed, stepwise = FALSE, approx = FALSE)
+  )
+```
+
+```{r}
+glance(fit) %>% arrange(AICc) %>% select(.model:BIC)
+
+```
+We see here the auto ARIMA performs best via 
+
+Finding the order and residuals of the auto ARIMA:
+```{r}
+fit %>% 
+  select(auto) %>%  
+  report()
+
+fit %>%
+  select(auto) %>%
+  gg_tsresiduals(lag=36)
+```
+
+One small but significant spike (lag 11) is still consistent with white noise.
+
+4. Verify residuals are white noise
+
+```{r}
+augment(fit) %>% features(.innov, ljung_box, lag=24, dof=4)
+
+```
+
+The model residuals do not differentiate from white noise.
+
+5. Forecast
+```{r}
+forecast(fit, h=36) %>%
+  filter(.model=='auto') %>%
+  autoplot(leisure) +
+  labs(title = "US employment: leisure and hospitality",
+       y="Number of people (millions)")
+```
 
 ***
 
+## 9.10 ARIMA vs ETS
 
+To compare ARIMA and ETS models use time series cross-validation or train/test split.
+
+Using CV:
+
+__Example__
+```{r}
+aus_economy <- global_economy %>%
+  filter(Code == "AUS") %>%
+  mutate(Population = Population/1e6)
+
+aus_economy %>%
+  slice(-n()) %>%
+  stretch_tsibble(.init = 10) %>%
+  model(
+    ETS(Population),
+    ARIMA(Population)
+  ) %>%
+  forecast(h = 1) %>%
+  accuracy(aus_economy) %>%
+  select(.model, RMSE:MAPE)
+```
+
+
+```{r}
+aus_economy %>%
+  model(ETS(Population)) %>%
+  forecast(h = "5 years") %>%
+  autoplot(aus_economy %>% filter(Year >= 2000)) +
+  labs(title = "Australian population",
+       y = "People (millions)")
+```

@@ -15,7 +15,7 @@ library(fpp3)
 ## Load Data Set
 
 A single time series is required for this notebook, and should be saved to "data".
-The name of the column column you are interested in should be formatted as a 
+The name of the column you are interested in should be formatted as a 
 string and pointing to "column".
 
 
@@ -145,7 +145,7 @@ ts_stats <- function(single_timeseries, column) {
     print('Data is not differentiated from white noise')
   
   if(ts_features$coef_hurst > .75) {
-    print('Hurst coefficient states: Time series has long memory and thus significant autocorrelations for many lags')
+    print('Hurst coefficient states: Time series has long memory; thus significant autocorrelations for many lags')
   }
   else
     print('Hurst coefficient states: may have a few significant autocorrelations, but not for many lags')
@@ -183,7 +183,6 @@ train_stats
 
 #### Comparison of Original to Transform Using Lambda
 ```{r}
-
 transform_comparison <- function(dataframe, column, stats_df, append = FALSE){
   # Function derives the Box Cox transform and adds it to the original data frame
   # if append = True. This retains the tsibble format for the transform.
@@ -208,20 +207,23 @@ transform_comparison <- function(dataframe, column, stats_df, append = FALSE){
   }
 }
 
-# Un-comment if using transformed version
-data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
-test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
+transform_comparison(train, column, train_stats)
 
-train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
 ```
 
 
 #### If Box Cox Transform Acceptable...
 
-Un-comment below code to henceforth the transformed data to the "column" variable.
+Un-comment below code to henceforth point the transformed data to the "column" variable.
+
 ```{r}
+# Un-comment if using transformed version
+data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
+test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
+train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
 column <- 'transform'
 ```
+
 
 
 
@@ -365,20 +367,18 @@ benchmark_results <- plot_benchmark_models(data, column, test, benchmark_fit, zo
 
 benchmark_accuracy <- benchmark_results[[1]]
 
-benchmark_accuracy
-
 benchmark_results
 ```
 
 
 #### Plot Best Benchmark Model's Residuals
 
-Function uses MAPE to sort the dataframe and return best performing benchmark.
+Function uses RMSE to sort the dataframe and return best performing benchmark.
 ```{r}
 plot_best_benchmark_residuals <- function(model_accuracy, dataframe, column) {
   col_name <- as.name(column)
   
-  benchmark_data <- model_accuracy %>% arrange(MAPE)
+  benchmark_data <- model_accuracy %>% arrange(RMSE)
   
   print(benchmark_data[1,])
   
@@ -411,6 +411,25 @@ plot_best_benchmark_residuals(benchmark_accuracy, data, column)
 ## Testing More Advanced Models
 
 #### Linear Model Based on Trend and/or Seasonality
+
+```{r}
+get_residuals <- function(model_fit){
+  lb_result <- augment(model_fit) %>%
+    features(.innov, ljung_box, lag = 10)
+  
+  print(lb_result)
+  
+  if (lb_result$lb_pvalue < 0.05) {
+    print('Series is differentiated from white noise.')
+  } else {
+    print('Series is not differentiated from white noise.')
+  }
+  gg_tsresiduals(model_fit)
+  
+  # return(lb_result)
+}
+```
+
 
 ```{r}
 fit_trend_seasonal_lm <- function(train_set, column, train_stats, test_set) {
@@ -497,46 +516,11 @@ ets_output[[4]]
 
 
 ```{r}
-get_residuals <- function(model_fit){
-  lb_result <- augment(model_fit) %>%
-    features(.innov, ljung_box, lag = 10)
-  
-  print(lb_result)
-  
-  if (lb_result$lb_pvalue < 0.05) {
-    print('Series is differentiated from white noise.')
-  } else {
-    print('Series is not differentiated from white noise.')
-  }
-  gg_tsresiduals(ets_fit)
-  
-  # return(lb_result)
-}
-
 get_residuals(ets_fit)
 ```
 
 
 #### ARIMA Models
-
-__Autocorrelation and Partial Autocorrelation__
-```{r}
-acf_pacf <- function(train_set, column) {
-  col_name <- as.name(column)
-  
-  p1 <- train_set %>%
-    ACF({{col_name}}, lag_max=48) %>%
-    autoplot() +
-    labs(y = 'ACF')
-  
-  p2 <- train_set %>%
-    PACF({{col_name}}, lag_max=48) %>%
-    autoplot() +
-    labs(y = 'PACF')
-  
-  grid.arrange(p1, p2, nrow = 2)
-}
-```
 
 ```{r}
 
@@ -563,11 +547,12 @@ arima_model <- function(train_set, column, test_set) {
 
 arima_output <- arima_model(train, column, test)
 
+arima_fit <- arima_output[[1]]
+
 arima_accuracy <- arima_output[[2]]
 
 arima_output
 ```
-
 
 
 ```{r}
@@ -581,7 +566,7 @@ bind_rows(
   lm_accuracy,
   ets_accuracy,
   arima_accuracy) %>%
-  arrange(MAPE)
+  arrange(RMSE)
 ```
 
 

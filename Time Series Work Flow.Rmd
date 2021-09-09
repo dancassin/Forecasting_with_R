@@ -589,5 +589,3 @@ bind_rows(
   arima_accuracy) %>%
   arrange(RMSE)
 ```
-
-

@@ -337,6 +337,7 @@ benchmark_fit <- benchmark_models(train, column, train_stats)
 benchmark_fit
 ```
 
+
 #### Plot Benchmark Models and Get Accuracy Scores
 
 ```{r}
@@ -412,6 +413,8 @@ plot_best_benchmark_residuals(benchmark_accuracy, data, column)
 
 #### Linear Model Based on Trend and/or Seasonality
 
+Fitting a Time Series Linear Model using trend and seasonality as predictors.
+
 ```{r}
 get_residuals <- function(model_fit){
   lb_result <- augment(model_fit) %>%
@@ -473,12 +476,19 @@ lm_accuracy <- lm_output[[2]]
 lm_accuracy
 
 lm_fit <- lm_output[[1]]
+```
 
+
+```{r}
 get_residuals(lm_fit)
 
 ```
 
 #### ETS Model
+
+Exponential Smoothing weights observations in an exponentially decreasing fashion
+starting with the most recent observation. This gives the most recent observations
+more weight in forecasting.
 ```{r}
 ets_model <- function(train_set, column, test_set) {
   col_name <- as.name(column)
@@ -522,6 +532,14 @@ get_residuals(ets_fit)
 
 #### ARIMA Models
 
+ARIMA models use weighted moving averages of past forecast errors, differencing 
+for stationarity, and autoregression (a regression model using a linear combination 
+of past values of the variable) to produce a forecast.
+
+The option below uses R's auto ARIMA function with stepwise and approx args both
+equaling FALSE to force it to evaluate all reasonable models. This takes longer 
+but is more thorough.
+
 ```{r}
 
 arima_model <- function(train_set, column, test_set) {
@@ -560,6 +578,9 @@ get_residuals(arima_fit)
 ```
 
 ## Assess Model Forecast Performance
+
+Below cell combines all accuracy tables and arranges the best model at the top 
+by lowest RMSE.
 ```{r}
 bind_rows(
   benchmark_accuracy, 

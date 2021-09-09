@@ -10,57 +10,231 @@ library(fpp3)
 ```
 
 
-__Basic Concept__:
+__Basic Concept__: a linear model with ARIMA errors. Functionally, a linear regression
+is fitted and then an ARIMA is run on the errors of the model. Errors from the 
+ARIMA are assumed to be white noise. In R, `ARIMA()` is called with predictor
+variables inside the function.
 
 
-## 9.1 
+## 10.1 Estimation
 
-***
+Parameters of the model are estimated by minimizing the SSE after the ARIMA has
+been performed on the linear regression errors.
 
-
-## 9.3 Autoregressive Models
-
-
-
-***
-
-
-## 9.4 Moving Average Models
-
+If the linear regression errors were minimized instead, valuable information 
+would be ignored, statistical tests would be incorrect.
 
 ***
 
 
-## 9.5 Non-Seasonal ARIMA Models
+## 10.2 Regression w/ ARIMA Errors
+
+`ARIMA()` function fits a regression model with ARIMA errors if exogenous regressors
+are included in the call:
+`ARIMA(y ~ x + pdq(1,1,0))`
+But `pdq()` does not need to be specified as `ARIMA()` can determine it automatically.
+
+__Example__
+```{r}
+us_change %>%
+  pivot_longer(c(Consumption, Income),
+               names_to = 'var', values_to = 'value') %>%
+  ggplot(aes(x = Quarter, y = value)) +
+  geom_line() +
+  facet_grid(vars(var), scales = 'free_y') +
+  labs(title = "US Consumption and Personal Income",
+       y = "Quarterly % Change")
+
+```
+
+It should be clear that this is stationary data, so no differencing will be needed.
+```{r}
+fit <- us_change %>%
+  model(ARIMA(Consumption ~ Income))
+report(fit)
+```
+
+
+
+```{r}
+bind_rows(
+    `Regression residuals` =
+        as_tibble(residuals(fit, type = "regression")),
+    `ARIMA residuals` =
+        as_tibble(residuals(fit, type = "innovation")),
+    .id = "type"
+  ) %>%
+  mutate(
+    type = factor(type, levels=c(
+      "Regression residuals", "ARIMA residuals"))
+  ) %>%
+  ggplot(aes(x = Quarter, y = .resid)) +
+  geom_line() +
+  facet_grid(vars(type))
+```
+
+For Dynamic Regression Models only the ARIMA residuals need to resemble white noise,
+and here, they are not differentiated from white noise. The `.innov` are the ARIMA
+residuals and `.resid` are the Linear Regression residuals.
+
+```{r}
+fit %>% gg_tsresiduals()
+
+augment(fit) %>%
+  features(.innov, ljung_box, dof = 5, lag = 8)
+
+```
+
 
 
 ***
 
 
-## 9.6 Estimation and Order Selection
+## 10.3 Forecasting
 
+Below we will forecast next eight quarters assuming future percentage changes will
+be eequal to the mean for the last 40 years.
+
+__Example__
+```{r}
+us_change_future <- new_data(us_change, 8) %>%
+  mutate(Income = mean(us_change$Income))
+forecast(fit, new_data = us_change_future) %>%
+  autoplot(us_change) +
+  labs(y = "Percentage change")
+```
+
+Prediction intervals are narrower than if we had just fit an ARIMA with no covariates
+as there is now greater explanation of the data with the Income predictor.
+
+__Caveat__: Prediction intervals from regression models do not take into account
+any uncertainty of future values of the predictors and are conditional on the 
+assumptions made regarding them, thus the reason for adding 8 quarters of the mean
+above.
+
+***
+
+
+## 10.4 Stochastic and Deterministic Trends
+
+Both Stochastic and Deterministic trend models use ARIMA on the errors. For 
+Stochastic I=0; for Deterministic I=1. 
 
 
 ***
 
 
-## 9.7 ARIMA Modeling in `fable`
+## 10.5 Dynamic Harmonic Regression
+
+For data with long seasonal periods (daily data with annual seasonality: 365, 
+weekly data: 52, half-hourly data: 48), dynamic regression with Fourier terms
+is recommended. Previous models max out at 24.
+
+__Example__
+```{r}
+aus_cafe <- aus_retail %>%
+  filter(
+    Industry == "Cafes, restaurants and takeaway food services",
+    year(Month) %in% 2004:2018
+  ) %>%
+  summarise(Turnover = sum(Turnover))
+
+fit <- model(aus_cafe,
+  `K = 1` = ARIMA(log(Turnover) ~ fourier(K=1) + PDQ(0,0,0)),
+  `K = 2` = ARIMA(log(Turnover) ~ fourier(K=2) + PDQ(0,0,0)),
+  `K = 3` = ARIMA(log(Turnover) ~ fourier(K=3) + PDQ(0,0,0)),
+  `K = 4` = ARIMA(log(Turnover) ~ fourier(K=4) + PDQ(0,0,0)),
+  `K = 5` = ARIMA(log(Turnover) ~ fourier(K=5) + PDQ(0,0,0)),
+  `K = 6` = ARIMA(log(Turnover) ~ fourier(K=6) + PDQ(0,0,0))
+)
+
+fit %>%
+  forecast(h = "2 years") %>%
+  autoplot(aus_cafe, level = 95) +
+  facet_wrap(vars(.model), ncol = 2) +
+  guides(colour = "none", fill = "none", level = "none") +
+  geom_label(
+    aes(x = yearmonth("2007 Jan"), y = 4250,
+        label = paste0("AICc = ", format(AICc))),
+    data = glance(fit)
+  ) +
+  labs(title= "Total monthly eating-out expenditure",
+       y="$ billions")
+```
+
+For the above:
+
+  * Note the `PDQ()` is declared as the Fourier calls handle seasonality.
+  * AICc value is minimized for K=6, which would be the one used.
 
 
 ***
 
-## 9.8 Forecasting
 
+## 10.6 Lagged Predictors
 
+The impact of a predictor may not be immediate. There may be a delay for sales
+to catch up to an advertising campaign and sales may be resultingly stronger 
+after the campaign concludes.
 
+For situations like this, we can lag the predictors.
 
-***
+Here we will look at TV Ads having an effect on number of quotations an insurance
+agency provides.
 
-## 9.9 Seasonal ARIMA Models
+```{r}
+insurance %>%
+  pivot_longer(Quotes:TVadverts) %>%
+  ggplot(aes(x = Month, y = value)) +
+  geom_line() +
+  facet_grid(vars(name), scales = "free_y") +
+  labs(y = "", title = "Insurance advertising and quotations")
+```
 
+Below a study on advertising expenditure for up to four months before the quote data.
 
+```{r}
+fit <- insurance %>%
+  # Restrict data so models use same fitting period
+  mutate(Quotes = c(NA, NA, NA, Quotes[4:40])) %>%
+  # Estimate models
+  model(
+    lag0 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts),
+    lag1 = ARIMA(Quotes ~ pdq(d = 0) +
+                 TVadverts + lag(TVadverts)),
+    lag2 = ARIMA(Quotes ~ pdq(d = 0) +
+                 TVadverts + lag(TVadverts) +
+                 lag(TVadverts, 2)),
+    lag3 = ARIMA(Quotes ~ pdq(d = 0) +
+                 TVadverts + lag(TVadverts) +
+                 lag(TVadverts, 2) + lag(TVadverts, 3))
+  )
 
-***
+glance(fit)
+```
 
-## 9.10 ARIMA vs ETS
+The best model looks to be advertising for the current month and one previous month
+considered. Then model is re-estimated using all available data.
+
+```{r}
+fit_best <- insurance %>%
+  model(ARIMA(Quotes ~ pdq(d = 0) +
+              TVadverts + lag(TVadverts)))
+report(fit_best)
+```
+
+In order to forecast, we create new data for the predictor variable with TVadverts 
+being an average of 8 for 20 periods.
+
+```{r}
+insurance_future <- new_data(insurance, 20) %>%
+  mutate(TVadverts = 8)
+fit_best %>%
+  forecast(insurance_future) %>%
+  autoplot(insurance) +
+  labs(
+    y = "Quotes",
+    title = "Forecast quotes with future advertising set to 8"
+  )
+```
 

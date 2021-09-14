@@ -14,52 +14,58 @@ library(fpp3)
 
 ## Load Data Set
 
-A single time series is required for this notebook, and should be saved to "data".
-The name of the column you are interested in should be formatted as a 
-string and pointing to "column".
+A univariate time series is required for this notebook, and should be saved to "data".
+Time series should be cleaned and ready to analyze and forecast. The name of the 
+column you are interested in should be formatted as a string and pointing to "column".
 
 
 ```{r}
-# Choose a time series 
-# Specify the column you would like to work with
+# 1. Upload a time series 
+# 2. Specify the column you would like to work with
 
-# data <- us_employment %>%
-#   filter(Title == "Leisure and Hospitality",
-#          year(Month) > 2000) %>%
-#   mutate(Employed = Employed/1000) %>%
-#   select(Month, Employed)
+# Examples provided
 
-data <- PBS %>%
-  filter(ATC2 == "A10") %>%
-  select(Month, Scripts) %>%
-  summarize(Total_Scripts = sum(Scripts))
 
-column <- 'Total_Scripts'
+
+data <- us_employment %>%
+  filter(Title == "Leisure and Hospitality",
+         year(Month) > 2000) %>%
+  mutate(Employed = Employed/1000) %>%
+  select(Month, Employed)
+
+column <- 'Employed'
+
+# data <- PBS %>%
+#   filter(ATC2 == "A10") %>%
+#   select(Month, Scripts) %>%
+#   summarize(Total_Scripts = sum(Scripts))
+# 
+# column <- 'Total_Scripts'
+
 
 data
 ```
 
 
+
 ## Split Data into Train Test
 
 In order to statistically test the accuracy of different models, an 80/20 train/test
-split is employed. It is required to know the frequency of the observations.
+split is employed. It is required to know the frequency of the observations. Daily and 
+weekly time series not included due to seasonal frequencies being 365 and 52, respectively.
+These periods are usually too large for the models here, and are better suited
+for transformation to the periods below or Fourier transforms (which are not 
+covered in this notebook). 
 
 ```{r}
 train_test_split <- function(dataframe, timeperiod) {
-  # timeperiod = ['yearly', 'quarterly', 'monthly','daily', 'business_daily']
+  # timeperiod = ['yearly', 'quarterly', 'monthly', 'business_daily']
   # assumed 80/20 split
   
   df_length = dim(dataframe)[1]
   
   if(timeperiod == 'monthly') {
     index = round(dim(dataframe)[1]/12 * .8) * 12
-  }
-  else if(timeperiod == 'daily') {
-    index = round(dim(dataframe)[1]/7 * .8) * 7
-  }
-  else if(timeperiod == 'business_daily') {
-    index = round(dim(dataframe)[1]/5 * .8) * 5
   }
   else if(timeperiod == 'quarterly') {
     index = round(dim(dataframe)[1]/4 * .8) * 4
@@ -214,14 +220,15 @@ transform_comparison(train, column, train_stats)
 
 #### If Box Cox Transform Acceptable...
 
-Un-comment below code to henceforth point the transformed data to the "column" variable.
+Un-comment below code to transform data and henceforth point the transformed 
+data to the "column" variable.
 
 ```{r}
-# Un-comment if using transformed version
-data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
-test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
-train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
-column <- 'transform'
+
+# data['transform'] <- transform_comparison(data, column, train_stats, append = TRUE)
+# test['transform'] <- transform_comparison(test, column, train_stats, append = TRUE)
+# train['transform'] <- transform_comparison(train, column, train_stats, append = TRUE)
+# column <- 'transform'
 ```
 
 
@@ -283,7 +290,7 @@ decomp(train, column)
 
 ## Establish Benchmark Models
 
-This section determines the models to use based on the train_stats dataframe and 
+This section determines the models to use based on the `train_stats` dataframe and 
 fits benchmark models to test the more complicated models against.
 
 ```{r}
@@ -536,8 +543,8 @@ ARIMA models use weighted moving averages of past forecast errors, differencing
 for stationarity, and autoregression (a regression model using a linear combination 
 of past values of the variable) to produce a forecast.
 
-The option below uses R's auto ARIMA function with stepwise and approx args both
-equaling FALSE to force it to evaluate all reasonable models. This takes longer 
+The option below uses R's auto ARIMA function with `stepwise` and `approx` args both
+equaling `FALSE` to force it to evaluate all reasonable models. This takes longer 
 but is more thorough.
 
 ```{r}

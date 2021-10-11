@@ -58,7 +58,7 @@ for transformation to the periods below or Fourier transforms (which are not
 covered in this notebook). 
 
 ```{r}
-train_test_split <- function(dataframe, timeperiod, percentTrain) {
+train_test_split <- function(dataframe, timeperiod, percentTrain = 0.8) {
   # timeperiod = ['yearly', 'quarterly', 'monthly', 'business_daily']
   # assumed 80/20 split
   
@@ -74,7 +74,7 @@ train_test_split <- function(dataframe, timeperiod, percentTrain) {
   return(list(train, test))
 }
 
-train_test <- train_test_split(data, 0.8)
+train_test <- train_test_split(data, monthly, 0.8)
 
 train <- train_test[[1]]
 test <- train_test[[2]]

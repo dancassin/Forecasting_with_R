@@ -275,11 +275,11 @@ Splitting a time series into trend, seasonality, and remainder for further inspe
 # RJ Note: I would suggest making window, period, degree, and jump parameters 
 # variable, but not sure if you left them out for some other purpose.
 
-decomp <- function(data, column){
+decomp <- function(data, column, trend_window = 7, seasonal_period = "periodic"){
   col_name <- as.name(column)
   
   data %>%
-    model(STL((!!col_name) ~ trend(window = 7) + season(window = "periodic"), robust = TRUE)) %>%
+    model(STL((!!col_name) ~ trend(window = trend_window) + season(window = seasonal_period), robust = TRUE)) %>%
     components() %>%
     autoplot()
 }

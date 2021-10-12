@@ -272,8 +272,6 @@ seasonal_plots(train, column, time_period = 'year', line_labels = 'both')
 
 Splitting a time series into trend, seasonality, and remainder for further inspection.
 ```{r}
-# RJ Note: I would suggest making window, period, degree, and jump parameters 
-# variable, but not sure if you left them out for some other purpose.
 
 decomp <- function(data, column, trend_window = 7, seasonal_period = "periodic"){
   col_name <- as.name(column)
